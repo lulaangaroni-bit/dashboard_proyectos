@@ -350,123 +350,166 @@ tbody tr:hover{background:#eff6ff!important}
 </div>
 
 <script>
-// ── CARGA DE DATOS ──────────────────────────────────────────
-let P = [];
-let META = {};
-let chartInstances = {}; // guardamos los gráficos para poder actualizarlos
+// ════════════════════════════════════════════════════════
+//  PMO DASHBOARD I+D – RDC  |  v3 completo
+//  Características: filtros, modal, PDF, presentación, notas
+// ════════════════════════════════════════════════════════
 
+let P    = [];   // array global de proyectos
+let META = {};   // metadatos del JSON
+let chartInstances = {};    // instancias de Chart.js
+let currentProject = null;  // proyecto abierto en el modal
+
+// ── CARGA DE DATOS DESDE GITHUB ──────────────────────────
 fetch("https://raw.githubusercontent.com/lulaangaroni-bit/dashboard_proyectos/main/proyectos.json")
-  .then(function(respuesta){ return respuesta.json(); })
-  .then(function(datos){
-    META = datos._metadata;
-    P = datos.proyectos;
-    iniciarDashboard();
+  .then(r => r.json())
+  .then(data => {
+    META = data._metadata;
+    P    = data.proyectos;
+    iniciar();
   })
-  .catch(function(error){
+  .catch(err => {
     document.getElementById("loading").style.display = "none";
     document.getElementById("error-msg").style.display = "block";
-    console.error("Error al cargar proyectos.json:", error);
+    console.error("Error cargando datos:", err);
   });
 
-
-// ── INICIAR EL DASHBOARD ────────────────────────────────────
-function iniciarDashboard() {
+// ── INICIAR DASHBOARD ────────────────────────────────────
+function iniciar() {
   document.getElementById("loading").style.display = "none";
-  document.getElementById("app").style.display = "block";
-  document.getElementById("fbar").style.display = "flex";
+  document.getElementById("app").style.display     = "block";
+  document.getElementById("fbar").style.display    = "flex";
 
   document.getElementById("hdr-corte").textContent =
-    new Date(META.corte).toLocaleDateString("es-AR", {day:"2-digit",month:"long",year:"numeric"});
-  document.getElementById("hdr-gpo").textContent = Math.round(META.score_gpo * 100) + "%";
-  document.getElementById("info-generado").textContent =
-    META.generado_en ? META.generado_en.replace("T"," ") : META.corte;
-  document.getElementById("gpo-score-big").textContent = Math.round(META.score_gpo * 100) + "%";
+    new Date(META.corte).toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"});
+  document.getElementById("hdr-gpo").textContent = pct(META.score_gpo);
+  const gen = META.generado_en || META.corte;
+  document.getElementById("info-generado").textContent = gen.replace("T"," ");
+  document.getElementById("gpo-score-big").textContent = pct(META.score_gpo);
 
   // Botones de PM dinámicos
-  const pms = [...new Set(P.map(p => p.pm))].filter(Boolean).sort();
+  const pms = [...new Set(P.map(p=>p.pm))].filter(Boolean).sort();
   document.getElementById("pm-filter-btns").innerHTML =
-    pms.map(pm => `<button class="fb" onclick="fPm('${pm}',this)">${pm}</button>`).join("");
+    pms.map(pm=>`<button class="fb" onclick="filtrarPM('${pm}',this)">${pm}</button>`).join("");
 
-  initCharts();       // crear gráficos una sola vez
-  actualizarTodo();   // renderizar todo con datos completos
-  renderPM();         // análisis PM (siempre sobre total)
-  renderGPO();        // GPO (siempre sobre total)
-  renderTL();         // timeline (siempre sobre total)
+  initCharts();
+  renderPM();
+  renderGPO();
+  renderTL();
+  actualizarTodo();
 }
 
-
-// ── FUNCIÓN CENTRAL: actualiza TODO con los datos filtrados ──
+// ── FUNCIÓN CENTRAL ──────────────────────────────────────
+// Llama a todo con los datos filtrados actuales
 function actualizarTodo() {
-  const data = getFilt();
-  renderKPIs(data);
-  renderTable(data);
-  renderFin(data);
-  renderAlerts(data);
-  updateCharts(data);
-  document.getElementById("cnt").textContent = data.length + " proyectos";
+  const datos = getFiltrados();
+  renderKPIs(datos);
+  renderTabla(datos);
+  renderFin(datos);
+  renderAlertas(datos);
+  actualizarGraficos(datos);
+  document.getElementById("cnt").textContent = datos.length + " proyectos";
 }
 
+// ════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════
+function pct(v)  { return v != null ? Math.round(v*100)+"%" : "–"; }
+function fd(d)   { if(!d) return "–"; return new Date(d).toLocaleDateString("es-AR",{day:"2-digit",month:"short",year:"2-digit"}); }
+function pg(v,c) { return `<div class="pw"><div class="pf" style="width:${Math.round(v*100)}%;background:${c}"></div></div>`; }
 
-// ── HELPERS ─────────────────────────────────────────────────
-function fd(d){
-  if(!d) return "–";
-  return new Date(d).toLocaleDateString("es-AR",{day:"2-digit",month:"short",year:"2-digit"});
+function semaforo(p) {
+  if(p.est==="FINALIZADO")        return {cls:"sgr", lbl:"CERRADO",   col:"#9ca3af"};
+  if(p.d1>2  || p.rl<=0.25)      return {cls:"sr",  lbl:"CRÍTICO",   col:"#dc2626"};
+  if((p.d1>0 && p.d1<=2) || p.rl<0.75) return {cls:"sor", lbl:"EN RIESGO", col:"#ea580c"};
+  if(p.rl<1)                      return {cls:"sy",  lbl:"ATENCIÓN",  col:"#d97706"};
+  return                                 {cls:"sg",  lbl:"EN TIEMPO", col:"#16a34a"};
 }
-function sem(p){
-  if(p.est==="FINALIZADO") return{cls:"sgr",lbl:"CERRADO",col:"#9ca3af"};
-  if(p.d1>2||p.rl<=0.25)   return{cls:"sr", lbl:"CRÍTICO",col:"#dc2626"};
-  if(p.d1>0&&p.d1<=2||p.rl<0.75) return{cls:"sor",lbl:"EN RIESGO",col:"#ea580c"};
-  if(p.rl<1)                return{cls:"sy", lbl:"ATENCIÓN",col:"#d97706"};
-  return{cls:"sg",lbl:"EN TIEMPO",col:"#16a34a"};
+function desvio(v) {
+  if(v===null||v===undefined) return {c:"",    t:"–"};
+  if(v<=0)  return {c:"dok", t: v===0?"ON TIME": Math.abs(v).toFixed(1)+"m antes"};
+  if(v<=1)  return {c:"dw",  t:"+"+v.toFixed(1)+"m"};
+  if(v<=3)  return {c:"dwn", t:"+"+v.toFixed(1)+"m"};
+  return          {c:"dcr", t:"+"+v.toFixed(1)+"m ⚠"};
 }
-function dc(v){
-  if(v===null||v===undefined) return{c:"",t:"–"};
-  if(v<=0) return{c:"dok",t:v===0?"ON TIME":(Math.abs(v).toFixed(1)+"m antes")};
-  if(v<=1) return{c:"dw", t:"+"+v.toFixed(1)+"m"};
-  if(v<=3) return{c:"dwn",t:"+"+v.toFixed(1)+"m"};
-  return{c:"dcr",t:"+"+v.toFixed(1)+"m ⚠"};
+function prClass(pr) {
+  return {AAA:"pAAA",Alta:"pA","Media/Baja":"pM",Exp_1:"pE1",Exp_2:"pE2"}[pr]||"pE2";
 }
-function pc(pr){
-  if(pr==="AAA")       return "pAAA";
-  if(pr==="Alta")      return "pA";
-  if(pr==="Media/Baja")return "pM";
-  if(pr==="Exp_1")     return "pE1";
-  return "pE2";
+function estClass(s) {
+  return {EJECUCIÓN:"se",EXPLORACIÓN:"sx",FINALIZADO:"sf"}[s]||"sf";
 }
-function sc(s){
-  if(s==="EJECUCIÓN")  return "se";
-  if(s==="EXPLORACIÓN")return "sx";
-  return "sf";
+function avColor(v) {
+  return v>=0.9?"#16a34a": v>=0.7?"#d97706":"#dc2626";
 }
-function pg(v,c){
-  return `<div class="pw"><div class="pf" style="width:${Math.round(v*100)}%;background:${c}"></div></div>`;
+function scColor(v) {
+  if(v==null) return "#94a3b8";
+  return v>=0.9?"#16a34a": v>=0.7?"#d97706": v>=0.5?"#ea580c":"#94a3b8";
 }
 
+// ════════════════════════════════════════════════════════
+//  FILTROS
+// ════════════════════════════════════════════════════════
+let fEstado="TODOS", fPM="TODOS", fPrio="TODOS", fSoloDesvio=false;
 
-// ── KPI CARDS — SE ACTUALIZAN CON EL FILTRO ─────────────────
-function renderKPIs(data) {
-  const ejec = data.filter(p=>p.est==="EJECUCIÓN").length;
-  const expl = data.filter(p=>p.est==="EXPLORACIÓN").length;
-  const fin  = data.filter(p=>p.est==="FINALIZADO").length;
-  const dev  = data.filter(p=>p.d1!==null&&p.d1>0).length;
-  const now  = new Date(META.corte);
-  const prox = data.filter(p=>{
-    if(!p.g2p||p.est==="FINALIZADO") return false;
-    const d=(new Date(p.g2p)-now)/86400000;
-    return d>=0&&d<=30;
-  }).length;
-  const pms  = new Set(data.map(p=>p.pm).filter(Boolean)).size;
-  const gpo  = Math.round(META.score_gpo*100);
+function filtrarEstado(v,el) {
+  fEstado=v;
+  marcarActivo(el, ["Todos","⚙ Ejecución","🔬 Exploración","✅ Finalizados"]);
+  actualizarTodo();
+}
+function filtrarPM(v,el) {
+  fPM=v;
+  const pmNames=[...new Set(P.map(p=>p.pm))].filter(Boolean);
+  marcarActivo(el, ["Todos",...pmNames]);
+  actualizarTodo();
+}
+function filtrarPrio(v,el) {
+  fPrio=v;
+  marcarActivo(el, ["Todos","AAA","Alta","Media/Baja"]);
+  actualizarTodo();
+}
+function filtrarDesvio() { fSoloDesvio=!fSoloDesvio; actualizarTodo(); }
+function resetFiltros()  {
+  fEstado="TODOS"; fPM="TODOS"; fPrio="TODOS"; fSoloDesvio=false;
+  document.getElementById("srch").value="";
+  actualizarTodo();
+}
+function marcarActivo(el, grupo) {
+  document.querySelectorAll(".fbar .fb").forEach(b=>{
+    if(grupo.includes(b.textContent.trim())) b.classList.remove("act");
+  });
+  el.classList.add("act");
+}
+function getFiltrados() {
+  const q=(document.getElementById("srch")||{}).value||"";
+  const ql=q.toLowerCase();
+  return P.filter(p=>{
+    if(fEstado!=="TODOS" && p.est!==fEstado) return false;
+    if(fPM!=="TODOS"    && p.pm!==fPM)      return false;
+    if(fPrio!=="TODOS"  && p.pr!==fPrio)    return false;
+    if(fSoloDesvio && !(p.d1>0))            return false;
+    if(ql && !p.n.toLowerCase().includes(ql) && !p.id.toLowerCase().includes(ql)) return false;
+    return true;
+  });
+}
 
-  // Indicador de si estamos viendo el total o un filtro
-  const isFiltered = data.length < P.length;
-  const filtLabel  = isFiltered ? `<span style="font-size:.6rem;color:#1a6fdb;font-weight:700"> (filtrado)</span>` : "";
+// ════════════════════════════════════════════════════════
+//  KPI CARDS (se actualizan con filtro)
+// ════════════════════════════════════════════════════════
+function renderKPIs(datos) {
+  const ejec = datos.filter(p=>p.est==="EJECUCIÓN").length;
+  const expl = datos.filter(p=>p.est==="EXPLORACIÓN").length;
+  const fin  = datos.filter(p=>p.est==="FINALIZADO").length;
+  const dev  = datos.filter(p=>p.d1!=null&&p.d1>0).length;
+  const now  = new Date(META.corte||new Date());
+  const prox = datos.filter(p=>p.g2p&&p.est!=="FINALIZADO"&&((new Date(p.g2p)-now)/86400000)<=30&&((new Date(p.g2p)-now)/86400000)>=0).length;
+  const pms  = [...new Set(datos.map(p=>p.pm).filter(Boolean))];
+  const filt = datos.length < P.length;
 
-  document.getElementById("kpi-row").innerHTML = `
+  document.getElementById("kpi-row").innerHTML=`
     <div class="kc" style="border-color:#1a6fdb">
-      <div class="kc-val">${data.length}${isFiltered?`<span style="font-size:1rem;color:#94a3b8">/${P.length}</span>`:""}</div>
-      <div class="kc-lbl">Portfolio${isFiltered?" (filtrado)":""}</div>
-      <div class="kc-sub">${isFiltered?"de "+P.length+" totales":"proyectos totales"}</div>
+      <div class="kc-val">${datos.length}${filt?`<span style="font-size:1rem;color:#94a3b8">/${P.length}</span>`:""}</div>
+      <div class="kc-lbl">${filt?"Selección":"Total Portfolio"}</div>
+      <div class="kc-sub">${filt?"de "+P.length+" totales":"proyectos"}</div>
     </div>
     <div class="kc" style="border-color:#3b82f6">
       <div class="kc-val" style="color:#1d4ed8">${ejec}</div><div class="kc-lbl">En Ejecución</div><div class="kc-sub">GTP2 en curso</div>
@@ -484,284 +527,257 @@ function renderKPIs(data) {
       <div class="kc-val" style="color:#d97706">${prox}</div><div class="kc-lbl">GTP2 ≤30d</div><div class="kc-sub">vencen pronto</div>
     </div>
     <div class="kc" style="border-color:#0f2744">
-      <div class="kc-val">${pms}</div><div class="kc-lbl">PMs</div>
-      <div class="kc-sub">${[...new Set(data.map(p=>p.pm).filter(Boolean))].join(" · ")||"–"}</div>
+      <div class="kc-val">${pms.length}</div><div class="kc-lbl">PMs</div>
+      <div class="kc-sub">${pms.join(" · ")||"–"}</div>
     </div>
     <div class="kc" style="border-color:#0d9488">
-      <div class="kc-val" style="color:#0d9488">${gpo}%</div><div class="kc-lbl">Score GPO</div><div class="kc-sub">portfolio total</div>
+      <div class="kc-val" style="color:#0d9488">${pct(META.score_gpo)}</div><div class="kc-lbl">Score GPO</div><div class="kc-sub">portfolio total</div>
     </div>`;
 }
 
-
-// ── FILTROS ─────────────────────────────────────────────────
-let fStat="TODOS", fPM="TODOS", fPrio="TODOS", fDv=false;
-
-function fSt(v,el){
-  fStat=v;
-  document.querySelectorAll(".fbar .fb").forEach(b=>{
-    if(["Todos","⚙ Ejecución","🔬 Exploración","✅ Finalizados"].includes(b.textContent.trim()))
-      b.classList.remove("act");
-  });
-  el.classList.add("act");
-  actualizarTodo();
-}
-function fPm(v,el){
-  fPM=v;
-  document.querySelectorAll(".fbar .fb").forEach(b=>{
-    const t=b.textContent.trim();
-    if(t==="Todos"||[...new Set(P.map(p=>p.pm))].includes(t))
-      b.classList.remove("act");
-  });
-  el.classList.add("act");
-  actualizarTodo();
-}
-function fPr(v,el){
-  fPrio=v;
-  document.querySelectorAll(".fbar .fb").forEach(b=>{
-    if(["Todos","AAA","Alta","Media/Baja"].includes(b.textContent.trim()))
-      b.classList.remove("act");
-  });
-  el.classList.add("act");
-  actualizarTodo();
-}
-function fDev(){ fDv=!fDv; actualizarTodo(); }
-function resetF(){
-  fStat="TODOS"; fPM="TODOS"; fPrio="TODOS"; fDv=false;
-  document.getElementById("srch").value="";
-  actualizarTodo();
-}
-function getFilt(){
-  const q=(document.getElementById("srch").value||"").toLowerCase();
-  return P.filter(p=>{
-    if(fStat!=="TODOS"&&p.est!==fStat) return false;
-    if(fPM!=="TODOS"&&p.pm!==fPM)     return false;
-    if(fPrio!=="TODOS"&&p.pr!==fPrio) return false;
-    if(fDv&&!(p.d1>0))                return false;
-    if(q&&!p.n.toLowerCase().includes(q)&&!p.id.toLowerCase().includes(q)) return false;
-    return true;
-  });
-}
-
-
-// ── TABLA — SE ACTUALIZA CON EL FILTRO ──────────────────────
-function renderTable(data){
-  document.getElementById("tbody").innerHTML=data.map(p=>{
-    const sm=sem(p); const d1=dc(p.d1); const d2=dc(p.d2);
-    const scv=p.sc!=null?Math.round(p.sc*100)+"%":"–";
-    const scCol=p.sc>=0.9?"#16a34a":p.sc>=0.7?"#d97706":p.sc>=0.5?"#ea580c":"#94a3b8";
-    const avC=p.av>=0.9?"#16a34a":p.av>=0.7?"#d97706":"#dc2626";
-    return`<tr onclick="openModal(${data.indexOf(p)})" title="Clic para ver detalle">
-      <td style="font-size:.66rem;color:#94a3b8;font-weight:600">${p.id}</td>
+// ════════════════════════════════════════════════════════
+//  TABLA PRINCIPAL (se actualiza con filtro + clicable)
+// ════════════════════════════════════════════════════════
+function renderTabla(datos) {
+  document.getElementById("tbody").innerHTML = datos.map((p,i) => {
+    const sm=semaforo(p), d1=desvio(p.d1), d2=desvio(p.d2);
+    const nota = loadNota(p) ? "📝" : "";
+    return `<tr style="cursor:pointer" onclick="abrirModal(${P.indexOf(p)})" title="Clic para ver detalle">
+      <td style="font-size:.66rem;color:#94a3b8;font-weight:600">${p.id}${nota}</td>
       <td style="max-width:200px;white-space:normal;font-weight:600">${p.n}</td>
       <td><span style="font-size:.62rem;background:#f1f5f9;padding:1px 5px;border-radius:5px;font-weight:600;color:#64748b">${(p.k||"").split(" ")[0]}</span></td>
       <td style="font-weight:700">${p.s}</td>
       <td><span style="background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:8px;font-weight:700;font-size:.7rem">${p.pm}</span></td>
-      <td><span class="pb-badge ${pc(p.pr)}">${p.pr}</span></td>
-      <td><span class="sb ${sc(p.est)}">${p.est}</span></td>
+      <td><span class="pb-badge ${prClass(p.pr)}">${p.pr}</span></td>
+      <td><span class="sb ${estClass(p.est)}">${p.est}</span></td>
       <td><div class="sm"><div class="smd ${sm.cls}"></div><span style="font-size:.66rem;font-weight:700;color:${sm.col}">${sm.lbl}</span></div></td>
-      <td>${pg(p.av,avC)} <span style="font-size:.68rem;font-weight:700">${Math.round(p.av*100)}%</span></td>
+      <td>${pg(p.av,avColor(p.av))} <span style="font-size:.68rem;font-weight:700">${Math.round(p.av*100)}%</span></td>
       <td style="font-size:.68rem;white-space:nowrap">${fd(p.g1p)}</td>
       <td>${d1.c?`<span class="dv ${d1.c}">${d1.t}</span>`:"–"}</td>
       <td style="font-size:.68rem;white-space:nowrap">${p.g2p?fd(p.g2p):"Exp."}</td>
       <td>${d2.c?`<span class="dv ${d2.c}">${d2.t}</span>`:"–"}</td>
-      <td style="font-weight:700;color:${scCol}">${scv}</td>
+      <td style="font-weight:700;color:${scColor(p.sc)}">${pct(p.sc)}</td>
     </tr>`;
   }).join("");
 }
 
-
-// ── FINALIZADOS — SE ACTUALIZA CON EL FILTRO ────────────────
-function renderFin(data){
-  const fin = data.filter(p=>p.est==="FINALIZADO");
+// ════════════════════════════════════════════════════════
+//  TABLA FINALIZADOS (se actualiza con filtro)
+// ════════════════════════════════════════════════════════
+function renderFin(datos) {
+  const fin = datos.filter(p=>p.est==="FINALIZADO");
   document.getElementById("fin-tbody").innerHTML = fin.length===0
-    ? `<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic">No hay proyectos finalizados en la selección actual</td></tr>`
-    : fin.map(p=>{
-        const d1=dc(p.d1); const d2=dc(p.d2);
-        return`<tr onclick="openModal(${data.indexOf(p)})" title="Clic para ver detalle">
+    ? `<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;font-style:italic">Sin finalizados en la selección actual</td></tr>`
+    : fin.map(p => {
+        const d1=desvio(p.d1), d2=desvio(p.d2);
+        return `<tr style="cursor:pointer" onclick="abrirModal(${P.indexOf(p)})">
           <td style="font-size:.66rem;color:#94a3b8">${p.id}</td>
           <td style="font-weight:600;max-width:200px;white-space:normal">${p.n}</td>
           <td><span style="background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:8px;font-weight:700;font-size:.7rem">${p.pm}</span></td>
-          <td><span class="pb-badge ${pc(p.pr)}">${p.pr}</span></td>
+          <td><span class="pb-badge ${prClass(p.pr)}">${p.pr}</span></td>
           <td style="font-size:.68rem">${fd(p.g1p)}</td>
           <td style="font-size:.68rem">${fd(p.g1r)}</td>
           <td>${d1.c?`<span class="dv ${d1.c}">${d1.t}</span>`:"–"}</td>
           <td style="font-size:.68rem">${fd(p.g2p)}</td>
           <td style="font-size:.68rem">${fd(p.g2r)}</td>
           <td>${d2.c?`<span class="dv ${d2.c}">${d2.t}</span>`:"–"}</td>
-          <td style="font-weight:700;color:#16a34a">${p.sc!=null?Math.round(p.sc*100)+"%":"–"}</td>
+          <td style="font-weight:700;color:#16a34a">${pct(p.sc)}</td>
         </tr>`;
       }).join("");
 }
 
+// ════════════════════════════════════════════════════════
+//  ALERTAS (se actualizan con filtro)
+// ════════════════════════════════════════════════════════
+function renderAlertas(datos) {
+  const now = new Date(META.corte||new Date());
+  const al  = [];
+  const ov  = datos.filter(p=>p.est!=="FINALIZADO"&&p.d1>0);
+  if(ov.length) al.push({t:"al-r",i:"🚨",ti:`${ov.length} proyecto(s) con GTP1 vencido`,b:ov.map(p=>p.n.substring(0,40)).join(" | ")});
+  const p30 = datos.filter(p=>p.est!=="FINALIZADO"&&p.g2p&&((new Date(p.g2p)-now)/86400000)<=30&&((new Date(p.g2p)-now)/86400000)>=0);
+  if(p30.length) al.push({t:"al-o",i:"⏰",ti:`${p30.length} proyecto(s) con GTP2 en ≤30 días`,b:p30.map(p=>p.n.substring(0,35)).join(" | ")});
+  const sinId=datos.filter(p=>p.id==="–"&&p.est!=="FINALIZADO");
+  if(sinId.length) al.push({t:"al-y",i:"⚠️",ti:`${sinId.length} proyectos sin ID asignado`,b:sinId.slice(0,4).map(p=>p.n.substring(0,35)).join(" | ")});
+  const scb=datos.filter(p=>p.sc!=null&&p.sc<0.6);
+  if(scb.length) al.push({t:"al-o",i:"📉",ti:"Score anual bajo (<60%)",b:scb.map(p=>`${p.n.substring(0,28)}: ${pct(p.sc)}`).join(" | ")});
+  const fin=datos.filter(p=>p.est==="FINALIZADO");
+  if(fin.length) al.push({t:"al-g",i:"✅",ti:`${fin.length} proyectos finalizados`,b:fin.map(p=>p.n.substring(0,28)).join(" · ")});
+  if(datos.length===P.length) al.push({t:"al-b",i:"⭐",ti:`Score GPO I+D: ${pct(META.score_gpo)} – Desempeño EXCELENTE`,b:"Portfolio supera el 95% de cumplimiento."});
+  if(!al.length) al.push({t:"al-b",i:"ℹ️",ti:"Sin alertas para la selección actual",b:"No se detectaron desvíos críticos."});
+  document.getElementById("alerts").innerHTML=al.map(a=>`
+    <div class="al ${a.t}"><div style="font-size:1.1rem">${a.i}</div>
+    <div><strong>${a.ti}</strong>${a.b}</div></div>`).join("");
+}
 
-// ── PM ANALYSIS — siempre sobre total ───────────────────────
-function renderPM(){
+// ════════════════════════════════════════════════════════
+//  PM, GPO, TIMELINE (siempre sobre total)
+// ════════════════════════════════════════════════════════
+function renderPM() {
   const pm={};
-  P.forEach(p=>{
-    if(!pm[p.pm]) pm[p.pm]={t:0,e:0,x:0,f:0,d:0};
-    pm[p.pm].t++;
-    if(p.est==="EJECUCIÓN")   pm[p.pm].e++;
-    else if(p.est==="EXPLORACIÓN") pm[p.pm].x++;
-    else pm[p.pm].f++;
-    if(p.d1>0) pm[p.pm].d++;
-  });
+  P.forEach(p=>{ if(!pm[p.pm])pm[p.pm]={t:0,e:0,x:0,f:0,d:0}; pm[p.pm].t++; if(p.est==="EJECUCIÓN")pm[p.pm].e++; else if(p.est==="EXPLORACIÓN")pm[p.pm].x++; else pm[p.pm].f++; if(p.d1>0)pm[p.pm].d++; });
   const max=Math.max(...Object.values(pm).map(d=>d.t));
-  document.getElementById("pm-body").innerHTML=
-    Object.entries(pm).sort((a,b)=>b[1].t-a[1].t).map(([name,d])=>`
-      <div class="pmrow">
-        <div class="pmn">${name}</div>
-        <div class="pmbw"><div class="pmb" style="width:${d.t/max*100}%">${d.t} proy.</div></div>
-        <div style="font-size:.68rem;color:#64748b;min-width:130px">
-          <span style="color:#3b82f6">⚙${d.e}</span>
-          <span style="color:#8b5cf6">🔬${d.x}</span>
-          <span style="color:#22c55e">✅${d.f}</span>
-          ${d.d>0?`<span style="color:#dc2626"> 🚨${d.d}dev</span>`:""}
-        </div>
-      </div>`).join("");
+  document.getElementById("pm-body").innerHTML=Object.entries(pm).sort((a,b)=>b[1].t-a[1].t).map(([n,d])=>`
+    <div class="pmrow"><div class="pmn">${n}</div>
+    <div class="pmbw"><div class="pmb" style="width:${d.t/max*100}%">${d.t} proy.</div></div>
+    <div style="font-size:.68rem;color:#64748b;min-width:130px">
+      <span style="color:#3b82f6">⚙${d.e}</span> <span style="color:#8b5cf6">🔬${d.x}</span> <span style="color:#22c55e">✅${d.f}</span>
+      ${d.d>0?`<span style="color:#dc2626"> 🚨${d.d}</span>`:""}
+    </div></div>`).join("");
 }
-
-
-// ── GPO — siempre sobre total ────────────────────────────────
-function renderGPO(){
-  const items=[
-    {n:"Av. Cronograma",p:10,s:1,   c:"#3b82f6"},
-    {n:"Entregables",   p:40,s:0.96,c:"#8b5cf6"},
-    {n:"Cierre GTP2",  p:0, s:0,   c:"#94a3b8"},
-    {n:"Efectividad",  p:50,s:0.5, c:"#0d9488"}
-  ];
+function renderGPO() {
+  const items=[{n:"Av. Cronograma",p:10,s:1,c:"#3b82f6"},{n:"Entregables",p:40,s:0.96,c:"#8b5cf6"},{n:"Cierre GTP2",p:0,s:0,c:"#94a3b8"},{n:"Efectividad",p:50,s:0.5,c:"#0d9488"}];
   document.getElementById("gpo-body").innerHTML=items.map(i=>`
-    <div class="gw">
-      <div style="width:120px;font-size:.72rem;font-weight:600">${i.n}</div>
-      <div class="gbar"><div class="gbf" style="width:${i.s*100}%;background:${i.c}"></div></div>
-      <div style="font-size:.7rem;font-weight:700;min-width:50px;text-align:right">${i.p}% peso</div>
-      <div style="font-size:.7rem;font-weight:700;color:${i.s>=0.9?"#16a34a":"#d97706"};min-width:40px;text-align:right">${Math.round(i.s*100)}%</div>
-    </div>`).join("");
+    <div class="gw"><div style="width:120px;font-size:.72rem;font-weight:600">${i.n}</div>
+    <div class="gbar"><div class="gbf" style="width:${i.s*100}%;background:${i.c}"></div></div>
+    <div style="font-size:.7rem;font-weight:700;min-width:50px;text-align:right">${i.p}% peso</div>
+    <div style="font-size:.7rem;font-weight:700;color:${i.s>=0.9?"#16a34a":"#d97706"};min-width:40px;text-align:right">${Math.round(i.s*100)}%</div></div>`).join("");
 }
-
-
-// ── TIMELINE — siempre sobre total ───────────────────────────
-function renderTL(){
-  const now=new Date(META.corte);
-  const items=P
-    .filter(p=>p.est!=="FINALIZADO"&&p.g2p)
-    .map(p=>({...p,diff:Math.round((new Date(p.g2p)-now)/86400000)}))
-    .sort((a,b)=>a.diff-b.diff).slice(0,12);
+function renderTL() {
+  const now=new Date(META.corte||new Date());
+  const items=P.filter(p=>p.est!=="FINALIZADO"&&p.g2p).map(p=>({...p,diff:Math.round((new Date(p.g2p)-now)/86400000)})).sort((a,b)=>a.diff-b.diff).slice(0,12);
   document.getElementById("tl-body").innerHTML=items.map(p=>{
-    const d=p.diff;
-    const cls=d<0?"tid-r":d<=30?"tid-o":d<=60?"tid-y":"tid-n";
-    const icon=d<0?"❗":d<=30?"⚠":d<=60?"📅":"🗓";
-    const dl=d<0?`${-d}d VENC.`:d===0?"HOY":`en ${d}d`;
-    const dlCol=d<0?"#dc2626":d<=30?"#ea580c":"#64748b";
-    return`<div class="ti">
-      <div class="tid ${cls}">${icon}</div>
-      <div class="tii">
-        <div class="tin">${p.n}</div>
-        <div class="tim"><span class="pb-badge ${pc(p.pr)}">${p.pr}</span> PM:<strong>${p.pm}</strong> ${p.s}</div>
-      </div>
-      <div class="tidt">${fd(p.g2p)}<br>
-        <span style="color:${dlCol};font-weight:700;font-size:.64rem">${dl}</span>
-      </div>
-    </div>`;
+    const d=p.diff, cls=d<0?"tid-r":d<=30?"tid-o":d<=60?"tid-y":"tid-n", icon=d<0?"❗":d<=30?"⚠":d<=60?"📅":"🗓", dl=d<0?`${-d}d VENC.`:d===0?"HOY":`en ${d}d`, dlc=d<0?"#dc2626":d<=30?"#ea580c":"#64748b";
+    return`<div class="ti"><div class="tid ${cls}">${icon}</div>
+      <div class="tii"><div class="tin">${p.n}</div>
+      <div class="tim"><span class="pb-badge ${prClass(p.pr)}">${p.pr}</span> PM:<strong>${p.pm}</strong> ${p.s}</div></div>
+      <div class="tidt">${fd(p.g2p)}<br><span style="color:${dlc};font-weight:700;font-size:.64rem">${dl}</span></div></div>`;
   }).join("");
 }
 
-
-// ── ALERTAS — SE ACTUALIZAN CON EL FILTRO ───────────────────
-function renderAlerts(data){
-  const now=new Date(META.corte);
-  const al=[];
-  const ov=data.filter(p=>p.est!=="FINALIZADO"&&p.d1>0);
-  if(ov.length) al.push({t:"al-r",i:"🚨",ti:`${ov.length} proyecto(s) con GTP1 vencido`,b:ov.map(p=>p.n.substring(0,40)).join(" | ")});
-  const p30=data.filter(p=>p.est!=="FINALIZADO"&&p.g2p&&((new Date(p.g2p)-now)/86400000)<=30&&((new Date(p.g2p)-now)/86400000)>=0);
-  if(p30.length) al.push({t:"al-o",i:"⏰",ti:`${p30.length} proyecto(s) con GTP2 en ≤30 días`,b:p30.map(p=>p.n.substring(0,35)).join(" | ")});
-  const sinId=data.filter(p=>p.id==="–"&&p.est!=="FINALIZADO");
-  if(sinId.length) al.push({t:"al-y",i:"⚠️",ti:`${sinId.length} proyectos sin ID asignado`,b:sinId.slice(0,4).map(p=>p.n.substring(0,35)).join(" | ")});
-  const scb=data.filter(p=>p.sc!=null&&p.sc<0.6);
-  if(scb.length) al.push({t:"al-o",i:"📉",ti:"Score anual bajo (<60%)",b:scb.map(p=>`${p.n.substring(0,30)}: ${Math.round(p.sc*100)}%`).join(" | ")});
-  const fin=data.filter(p=>p.est==="FINALIZADO");
-  if(fin.length) al.push({t:"al-g",i:"✅",ti:`${fin.length} proyectos finalizados en la selección`,b:fin.map(p=>p.n.substring(0,30)).join(" · ")});
-  if(data.length===P.length) al.push({t:"al-b",i:"⭐",ti:`Score GPO I+D: ${Math.round(META.score_gpo*100)}% – Desempeño EXCELENTE`,b:"El portfolio supera el 95% de cumplimiento. Gestión en nivel óptimo."});
-  if(al.length===0) al.push({t:"al-b",i:"ℹ️",ti:"Sin alertas para la selección actual",b:"No se detectaron desvíos ni proyectos críticos en el filtro aplicado."});
-  document.getElementById("alerts").innerHTML=al.map(a=>`
-    <div class="al ${a.t}">
-      <div style="font-size:1.1rem">${a.i}</div>
-      <div><strong>${a.ti}</strong>${a.b}</div>
-    </div>`).join("");
-}
-
-
-// ── GRÁFICOS — SE ACTUALIZAN CON EL FILTRO ──────────────────
-function initCharts(){
-  chartInstances.estado = new Chart(document.getElementById("ch-est"),{
-    type:"doughnut",
-    data:{labels:["Ejecución","Exploración","Finalizado"],
-      datasets:[{data:[0,0,0],backgroundColor:["#3b82f6","#8b5cf6","#22c55e"],borderWidth:2,borderColor:"#fff"}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:"bottom",labels:{font:{size:10},padding:8}}},cutout:"60%"}
-  });
-  chartInstances.pm = new Chart(document.getElementById("ch-pm"),{
-    type:"bar",
+// ════════════════════════════════════════════════════════
+//  GRÁFICOS (se actualizan con filtro)
+// ════════════════════════════════════════════════════════
+function initCharts() {
+  chartInstances.estado = new Chart(document.getElementById("ch-est"),{type:"doughnut",
+    data:{labels:["Ejecución","Exploración","Finalizado"],datasets:[{data:[0,0,0],backgroundColor:["#3b82f6","#8b5cf6","#22c55e"],borderWidth:2,borderColor:"#fff"}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:10},padding:8}}},cutout:"60%"}});
+  chartInstances.pm = new Chart(document.getElementById("ch-pm"),{type:"bar",
     data:{labels:[],datasets:[{label:"Proyectos",data:[],backgroundColor:["#1a6fdb","#0d9488","#f59e0b"],borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false}},y:{ticks:{stepSize:5}}}}
-  });
-  chartInstances.prio = new Chart(document.getElementById("ch-pr"),{
-    type:"bar",
-    data:{labels:["AAA","Alta","Media/Baja","Exp_1","Exp_2"],
-      datasets:[{label:"Proyectos",data:[0,0,0,0,0],
-        backgroundColor:["#f59e0b","#ef4444","#22c55e","#a78bfa","#d946ef"],borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",
-      plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false}},y:{grid:{display:false}}}}
-  });
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{ticks:{stepSize:5}}}}});
+  chartInstances.prio = new Chart(document.getElementById("ch-pr"),{type:"bar",
+    data:{labels:["AAA","Alta","Media/Baja","Exp_1","Exp_2"],datasets:[{label:"Proyectos",data:[0,0,0,0,0],backgroundColor:["#f59e0b","#ef4444","#22c55e","#a78bfa","#d946ef"],borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{display:false}}}}});
+}
+function actualizarGraficos(datos) {
+  chartInstances.estado.data.datasets[0].data=[datos.filter(p=>p.est==="EJECUCIÓN").length,datos.filter(p=>p.est==="EXPLORACIÓN").length,datos.filter(p=>p.est==="FINALIZADO").length];
+  chartInstances.estado.update();
+  const pc2={}; datos.forEach(p=>{pc2[p.pm]=(pc2[p.pm]||0)+1;});
+  const lb=Object.keys(pc2).sort((a,b)=>pc2[b]-pc2[a]);
+  chartInstances.pm.data.labels=lb; chartInstances.pm.data.datasets[0].data=lb.map(l=>pc2[l]); chartInstances.pm.update();
+  const pp={}; datos.forEach(p=>{pp[p.pr]=(pp[p.pr]||0)+1;});
+  chartInstances.prio.data.datasets[0].data=["AAA","Alta","Media/Baja","Exp_1","Exp_2"].map(l=>pp[l]||0); chartInstances.prio.update();
 }
 
-function updateCharts(data){
-  // Estado
-  chartInstances.estado.data.datasets[0].data = [
-    data.filter(p=>p.est==="EJECUCIÓN").length,
-    data.filter(p=>p.est==="EXPLORACIÓN").length,
-    data.filter(p=>p.est==="FINALIZADO").length
-  ];
-  chartInstances.estado.update();
+// ════════════════════════════════════════════════════════
+//  MODAL DETALLE DE PROYECTO
+// ════════════════════════════════════════════════════════
+function abrirModal(globalIdx) {
+  const p = P[globalIdx];
+  if (!p) return;
+  currentProject = p;
 
-  // PM
-  const pmCounts={};
-  data.forEach(p=>{ pmCounts[p.pm]=(pmCounts[p.pm]||0)+1; });
-  const pmLabels=Object.keys(pmCounts).sort((a,b)=>pmCounts[b]-pmCounts[a]);
-  chartInstances.pm.data.labels = pmLabels;
-  chartInstances.pm.data.datasets[0].data = pmLabels.map(pm=>pmCounts[pm]);
-  chartInstances.pm.update();
+  const sm=semaforo(p), d1=desvio(p.d1), d2=desvio(p.d2);
+  const nota = loadNota(p);
 
-  // Prioridad
-  const prLabels=["AAA","Alta","Media/Baja","Exp_1","Exp_2"];
-  const prCounts={};
-  data.forEach(p=>{ prCounts[p.pr]=(prCounts[p.pr]||0)+1; });
-  chartInstances.prio.data.datasets[0].data = prLabels.map(l=>prCounts[l]||0);
-  chartInstances.prio.update();
+  document.getElementById("modal-title").textContent = p.n;
+  document.getElementById("modal-body").innerHTML = `
+    <div class="modal-grid">
+      <div class="modal-field"><label>ID</label><span>${p.id}</span></div>
+      <div class="modal-field"><label>KPI / Objetivo</label><span>${p.k}</span></div>
+      <div class="modal-field"><label>PM Responsable</label><span style="color:#0369a1;font-weight:800">${p.pm}</span></div>
+      <div class="modal-field"><label>Sector</label><span>${p.s}</span></div>
+      <div class="modal-field"><label>Prioridad</label><span class="pb-badge ${prClass(p.pr)}">${p.pr}</span></div>
+      <div class="modal-field"><label>Estado</label><span class="sb ${estClass(p.est)}">${p.est}</span></div>
+    </div>
+    <div class="modal-section">📅 Fechas y Cronograma</div>
+    <div class="modal-grid">
+      <div class="modal-field"><label>GTP1 Plan</label><span>${fd(p.g1p)}</span></div>
+      <div class="modal-field"><label>GTP1 Real</label><span>${fd(p.g1r)}</span></div>
+      <div class="modal-field"><label>GTP2 Plan</label><span>${p.g2p?fd(p.g2p):"En exploración"}</span></div>
+      <div class="modal-field"><label>GTP2 Real</label><span>${fd(p.g2r)}</span></div>
+    </div>
+    <div class="modal-section">📊 Indicadores</div>
+    <div class="modal-grid">
+      <div class="modal-field"><label>Semáforo</label><span><div class="sm"><div class="smd ${sm.cls}"></div>&nbsp;<span style="font-weight:700;color:${sm.col}">${sm.lbl}</span></div></span></div>
+      <div class="modal-field"><label>Avance Entregables</label><span>${pg(p.av,avColor(p.av))} ${Math.round(p.av*100)}%</span></div>
+      <div class="modal-field"><label>Desvío GTP1</label><span>${d1.c?`<span class="dv ${d1.c}">${d1.t}</span>`:"–"}</span></div>
+      <div class="modal-field"><label>Desvío GTP2</label><span>${d2.c?`<span class="dv ${d2.c}">${d2.t}</span>`:"–"}</span></div>
+      <div class="modal-field"><label>Score Año</label><span style="font-weight:800;font-size:1rem;color:${scColor(p.sc)}">${pct(p.sc)}</span></div>
+      <div class="modal-field"><label>Regla Semáforo</label><span>${p.rl}</span></div>
+    </div>
+    <div class="modal-section">📝 Notas de Reunión</div>
+    <textarea class="modal-notes" id="modal-notes-input" placeholder="Escribí acá novedades, decisiones o comentarios de la reunión...">${nota}</textarea>
+    <div style="font-size:.66rem;color:#94a3b8">💾 Las notas se guardan automáticamente en tu navegador</div>`;
+
+  document.getElementById("modal-footer").innerHTML = `
+    <button class="modal-btn mbtn-save"  onclick="guardarYCerrar()">✓ Guardar y cerrar</button>
+    <button class="modal-btn mbtn-risk"  onclick="marcarDetenido()">⏸ Marcar Detenido</button>
+    <button class="modal-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe" onclick="marcarEnRiesgo()">⚠ Marcar En Riesgo</button>
+    <button class="modal-btn mbtn-close" onclick="borrarNota()">🗑 Borrar nota</button>`;
+
+  document.getElementById("modal-overlay").style.display = "block";
+  document.body.style.overflow = "hidden";
+}
+
+function cerrarModal() {
+  // Guardar nota antes de cerrar
+  const input = document.getElementById("modal-notes-input");
+  if (input && currentProject) saveNota(currentProject, input.value);
+  document.getElementById("modal-overlay").style.display = "none";
+  document.body.style.overflow = "";
+  actualizarTodo();
+}
+function guardarYCerrar()  { cerrarModal(); }
+function marcarDetenido()  { if(currentProject){ saveNota(currentProject, (loadNota(currentProject)||"") + "
+⏸ Marcado como DETENIDO en reunión " + new Date().toLocaleDateString("es-AR")); } cerrarModal(); }
+function marcarEnRiesgo()  { if(currentProject){ saveNota(currentProject, (loadNota(currentProject)||"") + "
+⚠ Marcado EN RIESGO en reunión " + new Date().toLocaleDateString("es-AR")); } cerrarModal(); }
+function borrarNota()      { if(currentProject){ localStorage.removeItem("pmo_nota_"+currentProject.id+currentProject.n); document.getElementById("modal-notes-input").value=""; } }
+
+// Cerrar con ESC o click fuera
+document.addEventListener("keydown", e => { if(e.key==="Escape") cerrarModal(); });
+document.getElementById("modal-overlay").addEventListener("click", function(e){ if(e.target===this) cerrarModal(); });
+
+// ════════════════════════════════════════════════════════
+//  NOTAS (localStorage)
+// ════════════════════════════════════════════════════════
+function saveNota(p, val) { localStorage.setItem("pmo_nota_"+p.id+p.n, val); }
+function loadNota(p)      { return localStorage.getItem("pmo_nota_"+p.id+p.n)||""; }
+
+// ════════════════════════════════════════════════════════
+//  MODO PRESENTACIÓN
+// ════════════════════════════════════════════════════════
+let enPresentacion = false;
+function togglePresentacion() {
+  enPresentacion = !enPresentacion;
+  const btn = document.getElementById("btn-present");
+  if (enPresentacion) {
+    document.body.classList.add("presentation");
+    btn.textContent = "✕ Salir"; btn.classList.add("active");
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.body.classList.remove("presentation");
+    btn.textContent = "🖥️ Presentación"; btn.classList.remove("active");
+    document.fullscreenElement && document.exitFullscreen && document.exitFullscreen().catch(()=>{});
+  }
+}
+document.addEventListener("fullscreenchange", ()=>{
+  if (!document.fullscreenElement && enPresentacion) {
+    enPresentacion=false;
+    document.body.classList.remove("presentation");
+    const btn=document.getElementById("btn-present");
+    if(btn){btn.textContent="🖥️ Presentación";btn.classList.remove("active");}
+  }
+});
+
+// ════════════════════════════════════════════════════════
+//  EXPORTAR PDF
+// ════════════════════════════════════════════════════════
+function exportarPDF() {
+  document.body.setAttribute("data-print-date", new Date().toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}));
+  if(enPresentacion){document.body.classList.remove("presentation");if(document.exitFullscreen&&document.fullscreenElement)document.exitFullscreen();}
+  window.print();
 }
 </script>
-
-<!--
-  ╔══════════════════════════════════════════════════════════╗
-  ║  FLUJO MENSUAL COMPLETO                                 ║
-  ║                                                        ║
-  ║  CADA MES, LOURDES HACE SOLO 2 PASOS:                  ║
-  ║                                                        ║
-  ║  PASO 1 – Actualizar el Excel (como siempre)           ║
-  ║    Trabajar en el archivo .xlsm normalmente.           ║
-  ║                                                        ║
-  ║  PASO 2 – Regenerar los datos                          ║
-  ║    Abrir terminal y ejecutar:                          ║
-  ║    python generar_json.py                              ║
-  ║    → El JSON se actualiza solo                         ║
-  ║                                                        ║
-  ║  PASO 3 – Ver el dashboard actualizado                 ║
-  ║    python -m http.server 8080                          ║
-  ║    Abrir: http://localhost:8080/pmo-dashboard-v2.html  ║
-  ║                                                        ║
-  ╚══════════════════════════════════════════════════════════╝
--->
 </body>
 </html>
