@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>PMO Dashboard I+D – RDC</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+:root{color-scheme:light;font-family:'Segoe UI',Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f0f4f8;color:#1e293b}
+/* HEADER */
+.hdr{background:linear-gradient(135deg,#0f2744 0%,#1e4080 60%,#0ea5e9 100%);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between}
+.hdr h1{font-size:1.1rem;font-weight:800}
+.hdr p{font-size:.72rem;opacity:.8;margin-top:2px}
+.hdr-right{text-align:right;font-size:.76rem;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.hdr-btns{display:flex;gap:8px}
+.btn-pdf{background:rgba(16,185,129,.85);border:1px solid rgba(16,185,129,.5);color:#fff;padding:6px 14px;border-radius:8px;font-size:.74rem;font-weight:700;cursor:pointer}
+.btn-pdf:hover{background:#059669}
+.btn-pres{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 14px;border-radius:8px;font-size:.74rem;font-weight:700;cursor:pointer}
+.btn-pres:hover,.btn-pres.act{background:#fff;color:#0f2744}
+.badge{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:16px;padding:3px 12px;font-weight:700;font-size:.85rem;display:inline-block}
+/* SEGMENTADORES */
+.slicers{background:#fff;border-bottom:2px solid #e2e8f0;padding:10px 28px;display:none;gap:18px;align-items:flex-end;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.slicer{display:flex;flex-direction:column;gap:3px}
+.slicer label{font-size:.62rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
+.slicer select{padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.76rem;color:#1e293b;background:#f8fafc;cursor:pointer;outline:none;min-width:150px}
+.slicer select:hover,.slicer select:focus{border-color:#1a6fdb;background:#fff}
+.slicer-search input{padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.76rem;color:#1e293b;outline:none;min-width:200px}
+.slicer-search input:focus{border-color:#1a6fdb}
+.btn-reset{padding:7px 14px;background:#fee2e2;border:1.5px solid #fca5a5;color:#b91c1c;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer;align-self:flex-end}
+.btn-reset:hover{background:#fca5a5}
+.cnt-badge{font-size:.7rem;color:#64748b;align-self:flex-end;margin-bottom:8px;margin-left:auto;font-weight:600}
+/* LOADING */
+#loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px}
+.spin{width:46px;height:46px;border:5px solid #e2e8f0;border-top-color:#1a6fdb;border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#loading p{font-size:.88rem;color:#64748b}
+#app{display:none}
+/* KPI CARDS */
+.kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;padding:16px 28px}
+.kc{background:#fff;border-radius:10px;padding:13px 15px;border-top:4px solid #ccc;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.kv{font-size:1.9rem;font-weight:800;line-height:1}
+.kl{font-size:.66rem;color:#64748b;font-weight:700;text-transform:uppercase;margin-top:4px}
+.ks{font-size:.62rem;color:#94a3b8;margin-top:2px}
+/* SECTION */
+.sec{padding:0 28px 18px}
+.panel{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);overflow:hidden;margin-bottom:14px}
+.ph{padding:11px 15px;border-bottom:1px solid #e2e8f0;font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:7px}
+.ph .dot{width:9px;height:9px;border-radius:50%}
+.pb{padding:13px 15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+/* ALERTS */
+.al{display:flex;gap:8px;padding:8px 10px;border-radius:7px;margin-bottom:6px;font-size:.74rem}
+.al-r{background:#fff1f1;border:1px solid #fca5a5;color:#991b1b}
+.al-o{background:#fff7ed;border:1px solid #fdba74;color:#9a3412}
+.al-y{background:#fefce8;border:1px solid #fde047;color:#854d0e}
+.al-b{background:#eff6ff;border:1px solid #93c5fd;color:#1e40af}
+.al-g{background:#f0fdf4;border:1px solid #86efac;color:#166534}
+.al strong{display:block;font-weight:700}
+/* TABLE */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.74rem}
+thead th{background:#f8fafc;color:#475569;font-weight:700;text-transform:uppercase;font-size:.63rem;letter-spacing:.3px;padding:9px 8px;text-align:left;border-bottom:2px solid #e2e8f0;white-space:nowrap}
+tbody tr{border-bottom:1px solid #f1f5f9;cursor:pointer}
+tbody tr:hover{background:#eff6ff!important}
+tbody td{padding:8px 8px;vertical-align:middle}
+.sb{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.63rem;font-weight:700;text-transform:uppercase}
+.se{background:#dbeafe;color:#1d4ed8}.sx{background:#ede9fe;color:#6d28d9}.sf{background:#dcfce7;color:#15803d}
+.pb-b{display:inline-block;padding:2px 7px;border-radius:8px;font-size:.62rem;font-weight:700}
+.pAAA{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.pA{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.pM{background:#f0fdf4;color:#166534;border:1px solid #86efac}
+.pE1{background:#ede9fe;color:#5b21b6}.pE2{background:#fdf4ff;color:#7e22ce}
+.sm{display:inline-flex;align-items:center;gap:4px}
+.smd{width:10px;height:10px;border-radius:50%}
+.sg{background:#16a34a}.sy{background:#d97706}.sor{background:#ea580c}.sr{background:#dc2626}.sgr{background:#9ca3af}
+.dv{padding:2px 6px;border-radius:6px;font-size:.68rem;font-weight:700}
+.dok{background:#dcfce7;color:#15803d}.dw{background:#fef9c3;color:#854d0e}.dwn{background:#fff7ed;color:#9a3412}.dcr{background:#fee2e2;color:#b91c1c}
+.pw{width:68px;height:6px;background:#e5e7eb;border-radius:3px;display:inline-block;vertical-align:middle}
+.pf{height:100%;border-radius:3px}
+/* PM bars */
+.pmrow{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:.75rem}
+.pmn{width:34px;font-weight:800;color:#0f2744}
+.pmbw{flex:1;height:20px;background:#f1f5f9;border-radius:4px;overflow:hidden}
+.pmb{height:100%;background:linear-gradient(90deg,#1a6fdb,#0ea5e9);display:flex;align-items:center;padding-left:6px;font-size:.66rem;font-weight:700;color:#fff}
+/* Timeline */
+.ti{display:flex;gap:9px;align-items:flex-start;margin-bottom:9px}
+.tid{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.66rem;font-weight:700;color:#fff;flex-shrink:0}
+.tii{flex:1;min-width:0}
+.tin{font-size:.73rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tim{font-size:.64rem;color:#64748b;margin-top:1px}
+.tidt{font-size:.68rem;font-weight:700;color:#1a6fdb;white-space:nowrap;text-align:right}
+.tid-r{background:#dc2626}.tid-o{background:#ea580c}.tid-y{background:#d97706}.tid-n{background:#0f2744}
+/* GPO */
+.gw{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:.74rem}
+.gbar{flex:1;height:11px;background:#f1f5f9;border-radius:3px;overflow:hidden}
+.gbf{height:100%;border-radius:3px}
+/* Info bar */
+.info-bar{background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 14px;font-size:.72rem;color:#1e40af;margin-bottom:13px;display:flex;gap:6px}
+/* MODAL */
+.modal-ov{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,39,68,.7);z-index:2000;overflow-y:auto;backdrop-filter:blur(3px)}
+.modal-box{background:#fff;border-radius:14px;max-width:700px;margin:30px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-hdr{background:linear-gradient(135deg,#0f2744,#1a6fdb);color:#fff;padding:18px 22px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:flex-start}
+.modal-ttl{font-size:.9rem;font-weight:800;max-width:560px;line-height:1.4}
+.modal-x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.modal-x:hover{background:rgba(255,255,255,.35)}
+.modal-bd{padding:18px 22px}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.mf{background:#f8fafc;border-radius:8px;padding:9px 11px}
+.mf label{font-size:.6rem;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;display:block;margin-bottom:2px}
+.mf span{font-size:.8rem;font-weight:600;color:#1e293b}
+.msec{font-size:.7rem;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin:14px 0 7px;padding-bottom:5px;border-bottom:1px solid #e2e8f0}
+.mnotes{width:100%;border:1.5px solid #e2e8f0;border-radius:8px;padding:9px 11px;font-size:.78rem;font-family:'Segoe UI',Arial,sans-serif;resize:vertical;min-height:72px;color:#1e293b;outline:none}
+.mnotes:focus{border-color:#1a6fdb}
+.modal-ft{display:flex;gap:8px;flex-wrap:wrap;padding:13px 22px;border-top:1px solid #e2e8f0;background:#f8fafc;border-radius:0 0 14px 14px}
+.mb{padding:7px 14px;border-radius:7px;border:none;font-size:.74rem;font-weight:700;cursor:pointer}
+.mb-save{background:#1a6fdb;color:#fff}.mb-det{background:#fee2e2;color:#b91c1c}
+.mb-risk{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}.mb-cl{background:#e2e8f0;color:#475569}
+/* PRESENTATION */
+body.pres .slicers{display:none!important}
+body.pres .hdr h1{font-size:1.4rem}
+body.pres .kpis{gap:14px;padding:20px 36px}
+body.pres .kv{font-size:2.4rem}
+body.pres .sec{padding:0 36px 20px}
+body.pres .info-bar{display:none}
+/* PRINT */
+@media print{
+  .slicers,.btn-pdf,.btn-pres,.modal-ov{display:none!important}
+  .hdr{background:#0f2744!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:10px 20px}
+  .kpis{gap:8px;padding:10px 20px}
+  .kc{box-shadow:none;padding:8px 10px}
+  .kv{font-size:1.4rem}
+  .sec{padding:0 20px 8px}
+  .panel{box-shadow:none;border:1px solid #e2e8f0;page-break-inside:avoid;margin-bottom:8px}
+  table{font-size:.62rem}
+  thead th{font-size:.56rem;padding:5px 5px}
+  tbody td{padding:4px 5px}
+  .info-bar,.grid3 .panel:last-child{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div>
+    <h1>🏭 PMO CONTROL TOWER – PROYECTOS I+D</h1>
+    <p>REFINERÍA DEL CENTRO S.A. &nbsp;|&nbsp; Portfolio I+D &nbsp;|&nbsp; Seguimiento Ejecutivo</p>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-btns">
+      <button class="btn-pdf"  onclick="exportarPDF()">📄 Exportar PDF</button>
+      <button class="btn-pres" id="btn-pres" onclick="togglePres()">🖥️ Presentación</button>
+    </div>
+    <div>Corte: <strong id="hdr-corte">–</strong></div>
+    <div class="badge">⭐ GPO: <span id="hdr-gpo">–</span></div>
+  </div>
+</div>
+
+<!-- SEGMENTADORES -->
+<div class="slicers" id="slicers">
+  <div class="slicer">
+    <label>📌 Estado</label>
+    <select id="sel-estado" onchange="actualizar()">
+      <option value="TODOS">Todos los estados</option>
+      <option value="EJECUCIÓN">⚙ En Ejecución</option>
+      <option value="EXPLORACIÓN">🔬 En Exploración</option>
+      <option value="FINALIZADO">✅ Finalizados</option>
+    </select>
+  </div>
+  <div class="slicer">
+    <label>👤 Responsable (PM)</label>
+    <select id="sel-pm" onchange="actualizar()">
+      <option value="TODOS">Todos los PMs</option>
+    </select>
+  </div>
+  <div class="slicer">
+    <label>⭐ Prioridad</label>
+    <select id="sel-prio" onchange="actualizar()">
+      <option value="TODOS">Todas las prioridades</option>
+      <option value="AAA">AAA – Máxima</option>
+      <option value="Alta">Alta</option>
+      <option value="Media/Baja">Media / Baja</option>
+      <option value="Exp_1">Exploración 1</option>
+      <option value="Exp_2">Exploración 2</option>
+    </select>
+  </div>
+  <div class="slicer">
+    <label>🚨 Desvíos</label>
+    <select id="sel-dev" onchange="actualizar()">
+      <option value="NO">Todos los proyectos</option>
+      <option value="SI">Solo con desvío GTP1</option>
+    </select>
+  </div>
+  <div class="slicer slicer-search">
+    <label>🔍 Buscar</label>
+    <input id="srch" placeholder="Nombre o ID..." oninput="actualizar()">
+  </div>
+  <button class="btn-reset" onclick="resetear()">↺ Reset</button>
+  <div class="cnt-badge" id="cnt-badge">– proyectos</div>
+</div>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spin"></div>
+  <p>Cargando <strong>PMO Dashboard I+D</strong>…</p>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+<div class="kpis" id="kpi-row"></div>
+
+<div class="sec">
+
+<div class="info-bar">ℹ️ <span>Datos: <strong id="info-gen">–</strong> &nbsp;|&nbsp; Para actualizar: ejecutá <strong>python generar_json.py</strong> y subí el nuevo <strong>index.html</strong> a GitHub.</span></div>
+
+<!-- ALERTAS -->
+<div class="panel">
+  <div class="ph"><div class="dot" style="background:#dc2626"></div>🚨 ALERTAS INTELIGENTES</div>
+  <div class="pb" style="display:grid;grid-template-columns:1fr 1fr;gap:7px" id="alerts"></div>
+</div>
+
+<!-- GRÁFICOS -->
+<div class="grid3">
+  <div class="panel">
+    <div class="ph"><div class="dot" style="background:#1a6fdb"></div>Estado del Portfolio <span style="font-size:.64rem;color:#94a3b8;margin-left:4px">· clic filtra</span></div>
+    <div class="pb"><canvas id="ch-est" height="200"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><div class="dot" style="background:#0d9488"></div>Proyectos por PM <span style="font-size:.64rem;color:#94a3b8;margin-left:4px">· clic filtra</span></div>
+    <div class="pb"><canvas id="ch-pm" height="200"></canvas></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><div class="dot" style="background:#f59e0b"></div>📅 Gantt – Vencimientos GTP2 <span style="font-size:.64rem;color:#94a3b8;margin-left:4px">· clic abre detalle</span></div>
+    <div class="pb" style="padding:8px 12px"><canvas id="ch-gantt" height="220"></canvas></div>
+  </div>
+</div>
+
+<!-- PM + GPO -->
+<div class="grid2">
+  <div class="panel">
+    <div class="ph"><div class="dot" style="background:#7c3aed"></div>👤 Carga por Responsable</div>
+    <div class="pb" id="pm-body"></div>
+  </div>
+  <div class="panel">
+    <div class="ph"><div class="dot" style="background:#0d9488"></div>⭐ Score GPO I+D</div>
+    <div class="pb">
+      <div style="font-size:2rem;font-weight:800;text-align:center;color:#0d9488;margin-bottom:4px" id="gpo-big">–</div>
+      <div style="font-size:.7rem;text-align:center;color:#64748b;margin-bottom:12px">Score GPO Tablero I+D 2026</div>
+      <div id="gpo-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TIMELINE -->
+<div class="panel">
+  <div class="ph"><div class="dot" style="background:#d97706"></div>📅 Próximos Vencimientos GTP2</div>
+  <div class="pb" style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="tl-body"></div>
+</div>
+
+<!-- TABLA -->
+<div class="panel">
+  <div class="ph"><div class="dot" style="background:#0f2744"></div>📋 TABLA EJECUTIVA DE PROYECTOS
+    <span id="cnt" style="font-size:.68rem;color:#94a3b8;margin-left:8px"></span>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>ID</th><th style="min-width:180px">PROYECTO</th><th>KPI</th><th>SECTOR</th><th>PM</th>
+        <th>PRIOR.</th><th>ESTADO</th><th>SEMÁFORO</th><th>AV.</th>
+        <th>GTP1 PLAN</th><th>Δ GTP1</th><th>GTP2 PLAN</th><th>Δ GTP2</th><th>SCORE</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- FINALIZADOS -->
+<div class="panel">
+  <div class="ph"><div class="dot" style="background:#22c55e"></div>✅ PROYECTOS FINALIZADOS</div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>ID</th><th style="min-width:200px">PROYECTO</th><th>PM</th><th>PRIOR.</th>
+        <th>GTP1 PLAN</th><th>GTP1 REAL</th><th>Δ G1</th><th>GTP2 PLAN</th><th>GTP2 REAL</th><th>Δ G2</th><th>SCORE</th>
+      </tr></thead>
+      <tbody id="fin-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /sec -->
+</div><!-- /app -->
+
+<!-- MODAL -->
+<div class="modal-ov" id="modal-ov">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <div><div style="font-size:.64rem;opacity:.7;margin-bottom:3px">DETALLE DE PROYECTO</div>
+      <div class="modal-ttl" id="modal-ttl">–</div></div>
+      <button class="modal-x" onclick="cerrarModal()">✕</button>
+    </div>
+    <div class="modal-bd" id="modal-bd"></div>
+    <div class="modal-ft" id="modal-ft"></div>
+  </div>
+</div>
+
+<div style="text-align:center;padding:13px;font-size:.68rem;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;margin-top:8px">
+  RDC PMO Dashboard I+D · Datos: Mayo 2026 · <strong>REFINERÍA DEL CENTRO S.A.</strong>
+</div>
+
+<script>
+// ================================================================
+//  PMO DASHBOARD I+D – RDC
+//  Versión con: segmentadores, gantt, modal, PDF, presentación
+// ================================================================
+
+var P    = [];
+var META = {};
+var charts = {};
+var curProj = null;
+
+// ── DATOS INCRUSTADOS ────────────────────────────────────────
+var _D = {"_metadata":{"corte":"2026-05-12","score_gpo":0.963,"generado_en":"2026-05-12 10:00","total_proyectos":35},"proyectos":[{"id":"2025.B60","n":"MARGARINAS CM: DESARROLLO MARGARINAS HOGAREÑAS","k":"LEGISLACIÓN","s":"CM","pm":"MLP","pr":"AAA","est":"EJECUCIÓN","g1p":"2026-09-30","g1r":null,"g2p":"2026-11-30","g2r":null,"d1":-4.87,"d2":-6.9,"rl":1,"av":1,"sc":0.9},{"id":"2024.B25","n":"G&D: DESARROLLO ART 0% TRANS","k":"LEGISLACIÓN","s":"G&D","pm":"CI","pr":"AAA","est":"EJECUCIÓN","g1p":"2025-12-01","g1r":"2025-12-01","g2p":"2026-05-30","g2r":null,"d1":0,"d2":-0.77,"rl":1,"av":1,"sc":1.0},{"id":"2026.B76","n":"LEVADURA: MEJORAR ACTIVIDAD","k":"LEGISLACIÓN","s":"LEV","pm":"MLP","pr":"AAA","est":"EJECUCIÓN","g1p":"2026-09-30","g1r":null,"g2p":"2026-12-30","g2r":null,"d1":-4.87,"d2":-7.9,"rl":1,"av":1,"sc":0.94},{"id":"2026.B86","n":"SUSTITUCIÓN – OPTIMIZACIÓN MATERIA PRIMA","k":"LEGISLACIÓN","s":"G&D","pm":"CI","pr":"AAA","est":"EJECUCIÓN","g1p":"2026-11-30","g1r":null,"g2p":"2026-12-30","g2r":null,"d1":-6.9,"d2":-7.9,"rl":1,"av":1,"sc":null},{"id":"2026.B79","n":"LOGO SIN GLUTEN – ADECUACIÓN PKG ADEREZOS","k":"LEGISLACIÓN","s":"ADER","pm":"MLP","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-01-30","g1r":null,"g2p":"2026-12-30","g2r":null,"d1":3.23,"d2":-7.9,"rl":0.5,"av":1,"sc":0.9},{"id":"2025.B45","n":"UNIFICACION DE AROMAS BBQ","k":"RENTABILIDAD","s":"ADER","pm":"DM","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2026-06-10","g1r":null,"g2p":null,"g2r":null,"d1":-1.13,"d2":null,"rl":1,"av":0.8,"sc":0.6},{"id":"2026.B77","n":"MINORITARIOS PP LEVADURA – PLANTA PILOTO","k":"RENTABILIDAD","s":"LEVA","pm":"MLP","pr":"Exp_2","est":"EXPLORACIÓN","g1p":"2026-11-30","g1r":null,"g2p":null,"g2r":null,"d1":-6.9,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"2026.B82","n":"OPTIM. RECETA PAN DE QUESO / PROV. ALT. AROMA","k":"RENTABILIDAD","s":"PM","pm":"MLP","pr":"Exp_2","est":"EXPLORACIÓN","g1p":"2026-10-27","g1r":null,"g2p":null,"g2r":null,"d1":-5.77,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"2025.B27a","n":"UNIFICACIÓN DE AROMAS EN INDUSTRIAL","k":"RENTABILIDAD","s":"G&D","pm":"MLP","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-11-30","g1r":null,"g2p":"2026-12-30","g2r":null,"d1":-6.9,"d2":-7.9,"rl":1,"av":1,"sc":1.0},{"id":"2025.B41","n":"MAYONESA SIN HUEVO – REEMPLAZO HUEVO","k":"RENTABILIDAD","s":"ADER","pm":"DM","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2026-06-30","g1r":null,"g2p":null,"g2r":null,"d1":-1.8,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"2026.B80","n":"OPTIM. CREMA PASTELERA + MEJORA CALIDAD","k":"RENTABILIDAD","s":"PM","pm":"MLP","pr":"Media\/Baja","est":"FINALIZADO","g1p":"2026-01-02","g1r":"2026-01-19","g2p":"2026-03-11","g2r":"2026-03-11","d1":0.57,"d2":0,"rl":0.75,"av":1,"sc":0.475},{"id":"2025.B27b","n":"DESARROLLO ALT. AROMA MANTECA MANTERINA","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Alta","est":"FINALIZADO","g1p":"2026-02-20","g1r":"2026-02-19","g2p":"2026-02-19","g2r":"2026-01-30","d1":-0.03,"d2":-0.67,"rl":1,"av":1,"sc":0.5},{"id":"2026.B72","n":"DESARROLLO BOLSAS – PETROPACK","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-06-20","g1r":null,"g2p":"2026-06-20","g2r":null,"d1":-1.47,"d2":-1.47,"rl":1,"av":1,"sc":1.0},{"id":"2025.B27c","n":"DESARROLLO LASENOR PGPR","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Media\/Baja","est":"EJECUCIÓN","g1p":"2026-12-10","g1r":null,"g2p":"2026-12-10","g2r":null,"d1":-7.23,"d2":-7.23,"rl":1,"av":1,"sc":1.0},{"id":"2026.B73","n":"DESARROLLO PAPPERMACHT – PETROPACK","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2026-12-30","g1r":null,"g2p":null,"g2r":null,"d1":-7.9,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"2025.B57","n":"PROV. ALT. VITAMINAS EPECUEN","k":"SOSTENIBILIDAD","s":"LEVA","pm":"MLP","pr":"Media\/Baja","est":"EJECUCIÓN","g1p":"2026-06-30","g1r":null,"g2p":"2026-06-30","g2r":null,"d1":-1.8,"d2":-1.8,"rl":1,"av":1,"sc":1.0},{"id":"2025.B56","n":"PROV. ALT. CANTAXANTINA","k":"SOSTENIBILIDAD","s":"ADER","pm":"MLP","pr":"Alta","est":"FINALIZADO","g1p":"2026-03-12","g1r":"2026-03-12","g2p":"2026-04-20","g2r":"2026-04-10","d1":0,"d2":-0.33,"rl":1,"av":1,"sc":0.5},{"id":"2026.B83","n":"PROV. ALT. BIDONES (INSUMO CRÍTICO)","k":"SOSTENIBILIDAD","s":"PM","pm":"MLP","pr":"Alta","est":"FINALIZADO","g1p":"2026-02-14","g1r":"2026-02-14","g2p":"2026-03-17","g2r":"2026-03-17","d1":0,"d2":0,"rl":1,"av":1,"sc":0.5},{"id":"2026.B63","n":"DESARROLLO ALT. CORRUGADORA DEL CENTRO","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Media\/Baja","est":"EJECUCIÓN","g1p":"2027-04-16","g1r":null,"g2p":"2027-04-16","g2r":null,"d1":0,"d2":-11.47,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"EXTENSIÓN VIDA ÚTIL G&D","k":"SOSTENIBILIDAD","s":"G&D","pm":"CI","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-09-30","g1r":null,"g2p":"2026-12-30","g2r":null,"d1":0,"d2":-7.9,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"MEJORA CONTINUA G&D – CRISTALIZACIÓN BOVINOS","k":"SOSTENIBILIDAD","s":"G&D","pm":"CI","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2026-07-30","g1r":null,"g2p":null,"g2r":null,"d1":0,"d2":null,"rl":1,"av":0.9,"sc":0.8},{"id":"2026.B84","n":"PROV. ALT. LECHE EN POLVO","k":"SOSTENIBILIDAD","s":"PM","pm":"MLP","pr":"Alta","est":"FINALIZADO","g1p":"2026-04-10","g1r":"2026-04-04","g2p":"2026-04-04","g2r":"2026-04-04","d1":0,"d2":0,"rl":1,"av":1,"sc":0.5},{"id":"2025.B27d","n":"PROV. ALT. AROMA MANTECA ROBERTET\/IFF","k":"SOSTENIBILIDAD","s":"G&D","pm":"MLP","pr":"Exp_2","est":"EXPLORACIÓN","g1p":"2026-12-30","g1r":null,"g2p":null,"g2r":null,"d1":0,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"2026.B85","n":"EMULSIONANTE ALT. PM – PALSGAARD","k":"SOSTENIBILIDAD","s":"PM","pm":"MLP","pr":"Exp_2","est":"EXPLORACIÓN","g1p":"2026-07-30","g1r":null,"g2p":null,"g2r":null,"d1":0,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"OPTIM. FORMULACIONES CANAL INDUSTRIAL","k":"SOSTENIBILIDAD","s":"G&D","pm":"CI","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-03-01","g1r":"2026-03-01","g2p":"2026-12-01","g2r":null,"d1":0,"d2":0,"rl":1,"av":1,"sc":1.0},{"id":"2025.B60b","n":"MOSTAZA AMERICA D FIESTA","k":"EXPANDIR NICHOS","s":"ADER","pm":"DM","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-04-13","g1r":"2026-04-12","g2p":"2026-06-30","g2r":null,"d1":-0.03,"d2":-1.8,"rl":1,"av":1,"sc":1.0},{"id":"2026.B65","n":"MOSTAZA AMERICA DANICA – NUEVO PRODUCTO","k":"EXPANDIR NICHOS","s":"ADER","pm":"DM","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-05-30","g1r":null,"g2p":"2026-07-30","g2r":null,"d1":-0.77,"d2":-2.8,"rl":1,"av":1,"sc":1.0},{"id":"2025.B48","n":"KETCHUP 475G – NUEVA PRESENTACIÓN","k":"EXPANDIR NICHOS","s":"ADER","pm":"MLP","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-02-20","g1r":"2026-02-20","g2p":"2026-05-10","g2r":null,"d1":0,"d2":-0.1,"rl":1,"av":1,"sc":1.0},{"id":"2025.B52","n":"UNIFICACION MEJORADORES – 3 A 1","k":"EXPANDIR NICHOS","s":"PM","pm":"MLP","pr":"Media\/Baja","est":"EJECUCIÓN","g1p":"2026-09-10","g1r":null,"g2p":"2026-12-20","g2r":null,"d1":-4.2,"d2":-7.57,"rl":1,"av":1,"sc":1.0},{"id":"2025.B50","n":"REDUCCIÓN GRAMAJE BIZCOCHUELO Y BRILLO","k":"EXPANDIR NICHOS","s":"PM","pm":"MLP","pr":"Media\/Baja","est":"EJECUCIÓN","g1p":"2026-09-10","g1r":null,"g2p":"2027-01-30","g2r":null,"d1":-4.2,"d2":-8.93,"rl":1,"av":1,"sc":1.0},{"id":"2026.B78","n":"LEVADURA RESISTENCIA AL PROPIONATO","k":"NUEVO NEGOCIO","s":"LEVA","pm":"MLP","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2026-11-06","g1r":null,"g2p":null,"g2r":null,"d1":0,"d2":null,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"DESARROLLO MARGARINA BOVINO VEGETAL","k":"NUEVO NEGOCIO","s":"G&D","pm":"CI","pr":"Alta","est":"EXPLORACIÓN","g1p":"2025-12-30","g1r":"2025-12-30","g2p":"2026-07-30","g2r":null,"d1":0,"d2":0,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"DESARROLLO 1332 ARCOR 0% TRANS","k":"NUEVO NEGOCIO","s":"G&D","pm":"CI","pr":"Alta","est":"EJECUCIÓN","g1p":"2025-11-01","g1r":"2025-11-01","g2p":"2026-12-30","g2r":null,"d1":0,"d2":0,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"DESARROLLO ALTERNATIVAS EC. A LOS ASH","k":"NUEVO NEGOCIO","s":"G&D","pm":"CI","pr":"Alta","est":"EJECUCIÓN","g1p":"2026-02-01","g1r":"2026-02-01","g2p":"2026-12-30","g2r":null,"d1":0,"d2":0,"rl":1,"av":1,"sc":1.0},{"id":"–","n":"DESARROLLO GRASA VEGETAL – ALT. 1331 ARCOR","k":"NUEVO NEGOCIO","s":"G&D","pm":"CI","pr":"Exp_1","est":"EXPLORACIÓN","g1p":"2025-12-01","g1r":"2025-12-01","g2p":null,"g2r":null,"d1":0,"d2":null,"rl":1,"av":1,"sc":1.0}]};
+
+META = _D._metadata;
+P    = _D.proyectos;
+
+// ── INICIO ───────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", function() {
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("app").style.display     = "block";
+  document.getElementById("slicers").style.display = "flex";
+  document.getElementById("hdr-corte").textContent = new Date(META.corte).toLocaleDateString("es-AR",{day:"2-digit",month:"long",year:"numeric"});
+  document.getElementById("hdr-gpo").textContent   = Math.round(META.score_gpo*100)+"%";
+  document.getElementById("gpo-big").textContent   = Math.round(META.score_gpo*100)+"%";
+  document.getElementById("info-gen").textContent  = META.generado_en || META.corte;
+  // Poblar PM select
+  var selPm = document.getElementById("sel-pm");
+  var pms = P.map(function(p){return p.pm;}).filter(Boolean);
+  pms = pms.filter(function(v,i,a){return a.indexOf(v)===i;}).sort();
+  pms.forEach(function(pm){
+    var o = document.createElement("option");
+    o.value = pm; o.textContent = pm;
+    selPm.appendChild(o);
+  });
+  initCharts();
+  renderPM();
+  renderGPO();
+  renderTL();
+  actualizar();
+});
+
+// ── HELPERS ──────────────────────────────────────────────────
+function pct(v)  { return v!=null ? Math.round(v*100)+"%" : "–"; }
+function fd(d)   { if(!d) return "–"; return new Date(d).toLocaleDateString("es-AR",{day:"2-digit",month:"short",year:"2-digit"}); }
+function pg(v,c) { return '<div class="pw"><div class="pf" style="width:'+Math.round(v*100)+'%;background:'+c+'"></div></div>'; }
+
+function sem(p) {
+  if(p.est==="FINALIZADO")          return {cls:"sgr",lbl:"CERRADO",   col:"#9ca3af"};
+  if(p.d1>2   || p.rl<=0.25)        return {cls:"sr", lbl:"CRITICO",   col:"#dc2626"};
+  if((p.d1>0&&p.d1<=2)||p.rl<0.75)  return {cls:"sor",lbl:"EN RIESGO", col:"#ea580c"};
+  if(p.rl<1)                         return {cls:"sy", lbl:"ATENCION",  col:"#d97706"};
+  return                                    {cls:"sg", lbl:"EN TIEMPO", col:"#16a34a"};
+}
+function dv(v) {
+  if(v===null||v===undefined) return {c:"",t:"–"};
+  if(v<=0) return {c:"dok",t:v===0?"ON TIME":Math.abs(v).toFixed(1)+"m"};
+  if(v<=1) return {c:"dw", t:"+"+v.toFixed(1)+"m"};
+  if(v<=3) return {c:"dwn",t:"+"+v.toFixed(1)+"m"};
+  return         {c:"dcr",t:"+"+v.toFixed(1)+"m!"};
+}
+function pc(pr) {
+  if(pr==="AAA")        return "pAAA";
+  if(pr==="Alta")       return "pA";
+  if(pr==="Media/Baja") return "pM";
+  if(pr==="Exp_1")      return "pE1";
+  return "pE2";
+}
+function ec(s) { return {EJECUCION:"se",EXPLORACION:"sx",FINALIZADO:"sf"}[s.replace("Ó","O").replace("É","E")]||"sf"; }
+function avc(v){ return v>=0.9?"#16a34a":v>=0.7?"#d97706":"#dc2626"; }
+function scc(v){ if(v==null)return"#94a3b8"; return v>=0.9?"#16a34a":v>=0.7?"#d97706":v>=0.5?"#ea580c":"#94a3b8"; }
+
+// ── FILTROS ──────────────────────────────────────────────────
+function getFiltrados() {
+  var est  = (document.getElementById("sel-estado")||{}).value||"TODOS";
+  var pm   = (document.getElementById("sel-pm")||{}).value||"TODOS";
+  var prio = (document.getElementById("sel-prio")||{}).value||"TODOS";
+  var dev  = (document.getElementById("sel-dev")||{}).value||"NO";
+  var q    = ((document.getElementById("srch")||{}).value||"").toLowerCase();
+  return P.filter(function(p){
+    if(est!=="TODOS"  && p.est!==est)  return false;
+    if(pm!=="TODOS"   && p.pm!==pm)    return false;
+    if(prio!=="TODOS" && p.pr!==prio)  return false;
+    if(dev==="SI"     && !(p.d1>0))    return false;
+    if(q && !p.n.toLowerCase().includes(q) && !p.id.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function actualizar() {
+  var datos = getFiltrados();
+  var n = datos.length;
+  document.getElementById("cnt-badge").textContent = n === P.length ? P.length+" proyectos" : n+"/"+P.length+" proyectos";
+  document.getElementById("cnt").textContent = n+" proyectos";
+  renderKPIs(datos);
+  renderTabla(datos);
+  renderFin(datos);
+  renderAlertas(datos);
+  actualizarGraficos(datos);
+}
+
+function resetear() {
+  ["sel-estado","sel-pm","sel-prio","sel-dev"].forEach(function(id){
+    var el=document.getElementById(id); if(el)el.value="TODOS";
+  });
+  var s=document.getElementById("srch"); if(s)s.value="";
+  actualizar();
+}
+
+// ── KPI CARDS ────────────────────────────────────────────────
+function renderKPIs(datos) {
+  var ejec = datos.filter(function(p){return p.est==="EJECUCIÓN";}).length;
+  var expl = datos.filter(function(p){return p.est==="EXPLORACIÓN";}).length;
+  var fin  = datos.filter(function(p){return p.est==="FINALIZADO";}).length;
+  var dev  = datos.filter(function(p){return p.d1!=null&&p.d1>0;}).length;
+  var now  = new Date(META.corte);
+  var prox = datos.filter(function(p){
+    if(!p.g2p||p.est==="FINALIZADO")return false;
+    var d=(new Date(p.g2p)-now)/86400000;
+    return d>=0&&d<=30;
+  }).length;
+  var filt = datos.length < P.length;
+  document.getElementById("kpi-row").innerHTML =
+    kc("#1a6fdb", datos.length+(filt?"<span style='font-size:.9rem;color:#94a3b8'>/"+P.length+"</span>":""), filt?"Selección":"Total Portfolio", filt?"de "+P.length+" totales":"proyectos") +
+    kc("#3b82f6","<span style='color:#1d4ed8'>"+ejec+"</span>","En Ejecución","GTP2 en curso") +
+    kc("#8b5cf6","<span style='color:#6d28d9'>"+expl+"</span>","En Exploración","fase GTP1") +
+    kc("#22c55e","<span style='color:#15803d'>"+fin+"</span>","Finalizados","cerrados") +
+    kc("#dc2626","<span style='color:#dc2626'>"+dev+"</span>","Con Desvio","GTP1 vencido") +
+    kc("#d97706","<span style='color:#d97706'>"+prox+"</span>","GTP2 ≤30d","vencen pronto") +
+    kc("#0f2744", datos.length>0?[...new Set(datos.map(function(p){return p.pm;}))].filter(Boolean).length:"–","PMs",[...new Set(datos.map(function(p){return p.pm;}))].filter(Boolean).join(" · ")||"–") +
+    kc("#0d9488","<span style='color:#0d9488'>"+Math.round(META.score_gpo*100)+"%</span>","Score GPO","portfolio total");
+}
+function kc(col,val,lbl,sub) {
+  return '<div class="kc" style="border-color:'+col+'"><div class="kv">'+val+'</div><div class="kl">'+lbl+'</div><div class="ks">'+sub+'</div></div>';
+}
+
+// ── TABLA ────────────────────────────────────────────────────
+function renderTabla(datos) {
+  document.getElementById("tbody").innerHTML = datos.map(function(p) {
+    var sm=sem(p), d1=dv(p.d1), d2=dv(p.d2);
+    var nota = localStorage.getItem("pmo_nota_"+p.id+p.n) ? "📝" : "";
+    return '<tr onclick="abrirModal('+P.indexOf(p)+')" title="Clic para ver detalle"><td style="font-size:.64rem;color:#94a3b8;font-weight:600">'+p.id+nota+'</td><td style="max-width:190px;white-space:normal;font-weight:600">'+p.n+'</td><td><span style="font-size:.6rem;background:#f1f5f9;padding:1px 5px;border-radius:5px;font-weight:600;color:#64748b">'+(p.k||"").split(" ")[0]+'</span></td><td style="font-weight:700">'+p.s+'</td><td><span style="background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:8px;font-weight:700;font-size:.68rem">'+p.pm+'</span></td><td><span class="pb-b '+pc(p.pr)+'">'+p.pr+'</span></td><td><span class="sb '+ec(p.est)+'">'+p.est+'</span></td><td><div class="sm"><div class="smd '+sm.cls+'"></div><span style="font-size:.64rem;font-weight:700;color:'+sm.col+'">'+sm.lbl+'</span></div></td><td>'+pg(p.av,avc(p.av))+' <span style="font-size:.66rem;font-weight:700">'+Math.round(p.av*100)+'%</span></td><td style="font-size:.66rem;white-space:nowrap">'+fd(p.g1p)+'</td><td>'+(d1.c?'<span class="dv '+d1.c+'">'+d1.t+'</span>':"–")+'</td><td style="font-size:.66rem;white-space:nowrap">'+(p.g2p?fd(p.g2p):"Exp.")+'</td><td>'+(d2.c?'<span class="dv '+d2.c+'">'+d2.t+'</span>':"–")+'</td><td style="font-weight:700;color:'+scc(p.sc)+'">'+pct(p.sc)+'</td></tr>';
+  }).join("");
+}
+
+// ── FINALIZADOS ──────────────────────────────────────────────
+function renderFin(datos) {
+  var fin = datos.filter(function(p){return p.est==="FINALIZADO";});
+  document.getElementById("fin-tbody").innerHTML = fin.length===0
+    ? '<tr><td colspan="11" style="text-align:center;padding:18px;color:#94a3b8;font-style:italic">Sin finalizados en la seleccion actual</td></tr>'
+    : fin.map(function(p){
+        var d1=dv(p.d1),d2=dv(p.d2);
+        return '<tr style="cursor:pointer" onclick="abrirModal('+P.indexOf(p)+')"><td style="font-size:.64rem;color:#94a3b8">'+p.id+'</td><td style="font-weight:600;max-width:200px;white-space:normal">'+p.n+'</td><td><span style="background:#e0f2fe;color:#0369a1;padding:1px 7px;border-radius:8px;font-weight:700;font-size:.68rem">'+p.pm+'</span></td><td><span class="pb-b '+pc(p.pr)+'">'+p.pr+'</span></td><td style="font-size:.66rem">'+fd(p.g1p)+'</td><td style="font-size:.66rem">'+fd(p.g1r)+'</td><td>'+(d1.c?'<span class="dv '+d1.c+'">'+d1.t+'</span>':"–")+'</td><td style="font-size:.66rem">'+fd(p.g2p)+'</td><td style="font-size:.66rem">'+fd(p.g2r)+'</td><td>'+(d2.c?'<span class="dv '+d2.c+'">'+d2.t+'</span>':"–")+'</td><td style="font-weight:700;color:#16a34a">'+pct(p.sc)+'</td></tr>';
+      }).join("");
+}
+
+// ── ALERTAS ──────────────────────────────────────────────────
+function renderAlertas(datos) {
+  var now=new Date(META.corte), al=[];
+  var ov=datos.filter(function(p){return p.est!=="FINALIZADO"&&p.d1>0;});
+  if(ov.length) al.push({t:"al-r",i:"🚨",ti:ov.length+" proyecto(s) con GTP1 vencido",b:ov.map(function(p){return p.n.substring(0,38);}).join(" | ")});
+  var p30=datos.filter(function(p){if(!p.g2p||p.est==="FINALIZADO")return false; var d=(new Date(p.g2p)-now)/86400000; return d>=0&&d<=30;});
+  if(p30.length) al.push({t:"al-o",i:"⏰",ti:p30.length+" proyecto(s) con GTP2 en ≤30 dias",b:p30.map(function(p){return p.n.substring(0,35);}).join(" | ")});
+  var sinId=datos.filter(function(p){return p.id==="–"&&p.est!=="FINALIZADO";});
+  if(sinId.length) al.push({t:"al-y",i:"⚠️",ti:sinId.length+" proyectos sin ID asignado",b:sinId.slice(0,4).map(function(p){return p.n.substring(0,32);}).join(" | ")});
+  var scb=datos.filter(function(p){return p.sc!=null&&p.sc<0.6;});
+  if(scb.length) al.push({t:"al-o",i:"📉",ti:"Score anual bajo (<60%)",b:scb.map(function(p){return p.n.substring(0,28)+": "+pct(p.sc);}).join(" | ")});
+  var fin=datos.filter(function(p){return p.est==="FINALIZADO";});
+  if(fin.length) al.push({t:"al-g",i:"✅",ti:fin.length+" proyectos finalizados",b:fin.map(function(p){return p.n.substring(0,28);}).join(" · ")});
+  if(datos.length===P.length) al.push({t:"al-b",i:"⭐",ti:"Score GPO I+D: "+pct(META.score_gpo)+" - Desempeno EXCELENTE",b:"Portfolio supera el 95% de cumplimiento."});
+  if(!al.length) al.push({t:"al-b",i:"ℹ️",ti:"Sin alertas para la seleccion actual",b:"No se detectaron desvios criticos."});
+  document.getElementById("alerts").innerHTML=al.map(function(a){return '<div class="al '+a.t+'"><div style="font-size:1rem">'+a.i+'</div><div><strong>'+a.ti+'</strong>'+a.b+'</div></div>';}).join("");
+}
+
+// ── PM / GPO / TL ────────────────────────────────────────────
+function renderPM() {
+  var pm={};
+  P.forEach(function(p){if(!pm[p.pm])pm[p.pm]={t:0,e:0,x:0,f:0,d:0};pm[p.pm].t++;if(p.est==="EJECUCIÓN")pm[p.pm].e++;else if(p.est==="EXPLORACIÓN")pm[p.pm].x++;else pm[p.pm].f++;if(p.d1>0)pm[p.pm].d++;});
+  var max=Math.max.apply(null,Object.values(pm).map(function(d){return d.t;}));
+  document.getElementById("pm-body").innerHTML=Object.entries(pm).sort(function(a,b){return b[1].t-a[1].t;}).map(function(e){var n=e[0],d=e[1];return '<div class="pmrow"><div class="pmn">'+n+'</div><div class="pmbw"><div class="pmb" style="width:'+(d.t/max*100)+'%">'+d.t+' proy.</div></div><div style="font-size:.66rem;color:#64748b;min-width:120px"><span style="color:#3b82f6">⚙'+d.e+'</span> <span style="color:#8b5cf6">🔬'+d.x+'</span> <span style="color:#22c55e">✅'+d.f+'</span>'+(d.d>0?'<span style="color:#dc2626"> 🚨'+d.d+'</span>':'')+'</div></div>';}).join("");
+}
+function renderGPO() {
+  var items=[{n:"Av. Cronograma",p:10,s:1,c:"#3b82f6"},{n:"Entregables",p:40,s:0.96,c:"#8b5cf6"},{n:"Cierre GTP2",p:0,s:0,c:"#94a3b8"},{n:"Efectividad",p:50,s:0.5,c:"#0d9488"}];
+  document.getElementById("gpo-body").innerHTML=items.map(function(i){return '<div class="gw"><div style="width:118px;font-size:.7rem;font-weight:600">'+i.n+'</div><div class="gbar"><div class="gbf" style="width:'+(i.s*100)+'%;background:'+i.c+'"></div></div><div style="font-size:.68rem;font-weight:700;min-width:46px;text-align:right">'+i.p+'% peso</div><div style="font-size:.68rem;font-weight:700;color:'+(i.s>=0.9?"#16a34a":"#d97706")+';min-width:36px;text-align:right">'+Math.round(i.s*100)+'%</div></div>';}).join("");
+}
+function renderTL() {
+  var now=new Date(META.corte);
+  var items=P.filter(function(p){return p.est!=="FINALIZADO"&&p.g2p;}).map(function(p){return Object.assign({},p,{diff:Math.round((new Date(p.g2p)-now)/86400000)});}).sort(function(a,b){return a.diff-b.diff;}).slice(0,12);
+  document.getElementById("tl-body").innerHTML=items.map(function(p){var d=p.diff,cls=d<0?"tid-r":d<=30?"tid-o":d<=60?"tid-y":"tid-n",icon=d<0?"❗":d<=30?"⚠":d<=60?"📅":"🗓",dl=d<0?(-d)+"d VENC.":d===0?"HOY":"en "+d+"d",dlc=d<0?"#dc2626":d<=30?"#ea580c":"#64748b";return '<div class="ti"><div class="tid '+cls+'">'+icon+'</div><div class="tii"><div class="tin">'+p.n+'</div><div class="tim"><span class="pb-b '+pc(p.pr)+'">'+p.pr+'</span> PM:<strong>'+p.pm+'</strong> '+p.s+'</div></div><div class="tidt">'+fd(p.g2p)+'<br><span style="color:'+dlc+';font-weight:700;font-size:.62rem">'+dl+'</span></div></div>';}).join("");
+}
+
+// ── GRÁFICOS ─────────────────────────────────────────────────
+function initCharts() {
+  var curP={id:"cursor",beforeEvent:function(chart,args){if(args.event.type==="mousemove"){var pts=chart.getElementsAtEventForMode(args.event.native,"nearest",{intersect:true},false);chart.canvas.style.cursor=pts.length?"pointer":"default";}}};
+
+  charts.est = new Chart(document.getElementById("ch-est"),{
+    type:"doughnut", plugins:[curP],
+    data:{labels:["Ejecucion","Exploracion","Finalizado"],datasets:[{data:[0,0,0],backgroundColor:["#3b82f6","#8b5cf6","#22c55e"],borderWidth:2,borderColor:"#fff",hoverOffset:8}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"60%",
+      plugins:{legend:{position:"bottom",labels:{font:{size:10},padding:8}},tooltip:{callbacks:{label:function(c){return " "+c.label+": "+c.parsed+" proy.";}}},title:{display:true,text:"Clic para filtrar",color:"#94a3b8",font:{size:10}}},
+      onClick:function(e,els){if(!els.length)return;var real=["EJECUCIÓN","EXPLORACIÓN","FINALIZADO"],v=real[els[0].index];document.getElementById("sel-estado").value=v;actualizar();document.getElementById("tbody").scrollIntoView({behavior:"smooth"});}
+    }
+  });
+
+  charts.pm = new Chart(document.getElementById("ch-pm"),{
+    type:"bar", plugins:[curP],
+    data:{labels:[],datasets:[{label:"Proyectos",data:[],backgroundColor:["#1a6fdb","#0d9488","#f59e0b","#8b5cf6"],borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return " "+c.parsed+" proyectos";}}},title:{display:true,text:"Clic para filtrar por PM",color:"#94a3b8",font:{size:10}}},
+      scales:{x:{grid:{display:false}},y:{ticks:{stepSize:5},grid:{color:"#f1f5f9"}}},
+      onClick:function(e,els){if(!els.length)return;var pm=charts.pm.data.labels[els[0].index];document.getElementById("sel-pm").value=pm;actualizar();document.getElementById("tbody").scrollIntoView({behavior:"smooth"});}
+    }
+  });
+
+  charts.gantt = new Chart(document.getElementById("ch-gantt"),{
+    type:"bar", plugins:[curP],
+    data:{labels:[],datasets:[{data:[],backgroundColor:[],borderRadius:4,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(items){return items[0].label;},label:function(c){var s=new Date(c.parsed.x[0]).toLocaleDateString("es-AR",{day:"2-digit",month:"short"});var e=new Date(c.parsed.x[1]).toLocaleDateString("es-AR",{day:"2-digit",month:"short",year:"2-digit"});return " "+s+" → "+e;}}},title:{display:true,text:"Clic para abrir detalle del proyecto",color:"#94a3b8",font:{size:10}}},
+      scales:{x:{grid:{color:"#f1f5f9"},ticks:{font:{size:9},callback:function(v){return new Date(v).toLocaleDateString("es-AR",{month:"short",year:"2-digit"});},maxTicksLimit:8}},y:{ticks:{font:{size:9},color:"#475569"},grid:{display:false}}},
+      onClick:function(e,els){if(!els.length)return;var lbl=charts.gantt.data.labels[els[0].index];var found=P.find(function(p){return p.n.substring(0,24)===lbl;});if(found)abrirModal(P.indexOf(found));}
+    }
+  });
+}
+
+function actualizarGraficos(datos) {
+  // Estado
+  charts.est.data.datasets[0].data=[
+    datos.filter(function(p){return p.est==="EJECUCIÓN";}).length,
+    datos.filter(function(p){return p.est==="EXPLORACIÓN";}).length,
+    datos.filter(function(p){return p.est==="FINALIZADO";}).length
+  ];
+  charts.est.update();
+
+  // PM
+  var pmC={};
+  datos.forEach(function(p){pmC[p.pm]=(pmC[p.pm]||0)+1;});
+  var pmL=Object.keys(pmC).sort(function(a,b){return pmC[b]-pmC[a];});
+  charts.pm.data.labels=pmL;
+  charts.pm.data.datasets[0].data=pmL.map(function(l){return pmC[l];});
+  charts.pm.update();
+
+  // GANTT
+  var now=new Date(META.corte).getTime();
+  var dMs=86400000;
+  var gP=P.filter(function(p){return p.est!=="FINALIZADO"&&p.g2p;}).sort(function(a,b){return new Date(a.g2p)-new Date(b.g2p);}).slice(0,14);
+  if(gP.length) {
+    var minD=now-60*dMs;
+    var maxD=Math.max.apply(null,gP.map(function(p){return new Date(p.g2p).getTime();}))+30*dMs;
+    charts.gantt.data.labels=gP.map(function(p){return p.n.substring(0,24);});
+    charts.gantt.data.datasets[0].data=gP.map(function(p){
+      var s=p.g1p?Math.max(new Date(p.g1p).getTime(),minD+5*dMs):now;
+      var e=new Date(p.g2p).getTime();
+      return [Math.min(s,e-7*dMs),e];
+    });
+    charts.gantt.data.datasets[0].backgroundColor=gP.map(function(p){
+      var diff=(new Date(p.g2p).getTime()-now)/dMs;
+      if(diff<0)  return "rgba(220,38,38,.8)";
+      if(diff<=30)return "rgba(234,88,12,.8)";
+      if(diff<=90)return "rgba(217,119,6,.75)";
+      return "rgba(26,111,219,.7)";
+    });
+    charts.gantt.options.scales.x.min=minD;
+    charts.gantt.options.scales.x.max=maxD;
+    charts.gantt.update();
+  }
+}
+
+// ── MODAL ────────────────────────────────────────────────────
+function abrirModal(idx) {
+  var p=P[idx]; if(!p)return;
+  curProj=p;
+  var sm=sem(p),d1=dv(p.d1),d2=dv(p.d2),nota=localStorage.getItem("pmo_nota_"+p.id+p.n)||"";
+  document.getElementById("modal-ttl").textContent=p.n;
+  document.getElementById("modal-bd").innerHTML=
+    '<div class="modal-grid"><div class="mf"><label>ID</label><span>'+p.id+'</span></div><div class="mf"><label>KPI</label><span>'+p.k+'</span></div><div class="mf"><label>PM Responsable</label><span style="color:#0369a1;font-weight:800">'+p.pm+'</span></div><div class="mf"><label>Sector</label><span>'+p.s+'</span></div><div class="mf"><label>Prioridad</label><span class="pb-b '+pc(p.pr)+'">'+p.pr+'</span></div><div class="mf"><label>Estado</label><span class="sb '+ec(p.est)+'">'+p.est+'</span></div></div>'+
+    '<div class="msec">📅 Fechas y Cronograma</div>'+
+    '<div class="modal-grid"><div class="mf"><label>GTP1 Plan</label><span>'+fd(p.g1p)+'</span></div><div class="mf"><label>GTP1 Real</label><span>'+fd(p.g1r)+'</span></div><div class="mf"><label>GTP2 Plan</label><span>'+(p.g2p?fd(p.g2p):"En exploracion")+'</span></div><div class="mf"><label>GTP2 Real</label><span>'+fd(p.g2r)+'</span></div></div>'+
+    '<div class="msec">📊 Indicadores</div>'+
+    '<div class="modal-grid"><div class="mf"><label>Semaforo</label><span><div class="sm"><div class="smd '+sm.cls+'"></div>&nbsp;<span style="font-weight:700;color:'+sm.col+'">'+sm.lbl+'</span></div></span></div><div class="mf"><label>Avance Entregables</label><span>'+pg(p.av,avc(p.av))+' '+Math.round(p.av*100)+'%</span></div><div class="mf"><label>Desvio GTP1</label><span>'+(d1.c?'<span class="dv '+d1.c+'">'+d1.t+'</span>':"–")+'</span></div><div class="mf"><label>Desvio GTP2</label><span>'+(d2.c?'<span class="dv '+d2.c+'">'+d2.t+'</span>':"–")+'</span></div><div class="mf"><label>Score Año</label><span style="font-weight:800;font-size:.95rem;color:'+scc(p.sc)+'">'+pct(p.sc)+'</span></div><div class="mf"><label>Regla</label><span>'+p.rl+'</span></div></div>'+
+    '<div class="msec">📝 Notas de Reunion</div>'+
+    '<textarea class="mnotes" id="modal-notes" placeholder="Novedades, decisiones o comentarios de la reunion...">'+nota+'</textarea>'+
+    '<div style="font-size:.64rem;color:#94a3b8;margin-top:3px">Guardado automaticamente en este navegador</div>';
+  document.getElementById("modal-ft").innerHTML=
+    '<button class="mb mb-save" onclick="guardarCerrar()">✓ Guardar y cerrar</button>'+
+    '<button class="mb mb-det"  onclick="marcarDet()">⏸ Detenido</button>'+
+    '<button class="mb mb-risk" onclick="marcarRisk()">⚠ En Riesgo</button>'+
+    '<button class="mb mb-cl"   onclick="borrarNota()">🗑 Borrar nota</button>';
+  document.getElementById("modal-ov").style.display="block";
+  document.body.style.overflow="hidden";
+}
+function cerrarModal(){
+  var inp=document.getElementById("modal-notes");
+  if(inp&&curProj) localStorage.setItem("pmo_nota_"+curProj.id+curProj.n, inp.value);
+  document.getElementById("modal-ov").style.display="none";
+  document.body.style.overflow="";
+  actualizar();
+}
+function guardarCerrar(){ cerrarModal(); }
+function marcarDet(){
+  if(curProj){ var k="pmo_nota_"+curProj.id+curProj.n; localStorage.setItem(k,(localStorage.getItem(k)||"")+" | DETENIDO "+new Date().toLocaleDateString("es-AR")); }
+  cerrarModal();
+}
+function marcarRisk(){
+  if(curProj){ var k="pmo_nota_"+curProj.id+curProj.n; localStorage.setItem(k,(localStorage.getItem(k)||"")+" | EN RIESGO "+new Date().toLocaleDateString("es-AR")); }
+  cerrarModal();
+}
+function borrarNota(){
+  if(curProj){ localStorage.removeItem("pmo_nota_"+curProj.id+curProj.n); var i=document.getElementById("modal-notes"); if(i)i.value=""; }
+}
+document.addEventListener("keydown",function(e){if(e.key==="Escape")cerrarModal();});
+document.getElementById("modal-ov").addEventListener("click",function(e){if(e.target===this)cerrarModal();});
+
+// ── PRESENTACION ─────────────────────────────────────────────
+var enPres=false;
+function togglePres(){
+  enPres=!enPres;
+  var btn=document.getElementById("btn-pres");
+  if(enPres){document.body.classList.add("pres");btn.textContent="✕ Salir";btn.classList.add("act");document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(function(){});}
+  else{document.body.classList.remove("pres");btn.textContent="🖥️ Presentación";btn.classList.remove("act");document.fullscreenElement&&document.exitFullscreen&&document.exitFullscreen().catch(function(){});}
+}
+document.addEventListener("fullscreenchange",function(){if(!document.fullscreenElement&&enPres){enPres=false;document.body.classList.remove("pres");var btn=document.getElementById("btn-pres");if(btn){btn.textContent="🖥️ Presentación";btn.classList.remove("act");}}});
+
+// ── PDF ───────────────────────────────────────────────────────
+function exportarPDF(){
+  if(enPres){document.body.classList.remove("pres");if(document.exitFullscreen&&document.fullscreenElement)document.exitFullscreen();}
+  window.print();
+}
+</script>
+</body>
+</html>
